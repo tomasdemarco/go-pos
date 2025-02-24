@@ -1,0 +1,4 @@
+github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
+github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583 v1.12.0 h1:VKKZqRzR+eATOyE12vJo2jpxZhQM0ffo/PG7Vyt+kCw=
+gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583 v1.12.0/go.mod h1:AItzIvBSMMDHucWW1+6eikSRF88ADJ1RVEkW4KfAu7k=
