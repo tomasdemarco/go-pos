@@ -1,25 +1,74 @@
 package main
 
 import (
-	"gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583/packager"
-	"gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583/utils"
+	"github.com/tomasdemarco/iso8583/encoding"
+	"github.com/tomasdemarco/iso8583/packager"
+	"github.com/tomasdemarco/iso8583/prefix"
+	"go-pos/client"
 	"go-pos/logger"
-	"go-pos/server"
 	"log"
 )
 
 func main() {
-	pkg, err := packager.LoadPackager("./iso8583/packager", "iso87BPackager.json")
+	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
 
-	// Logs without flags
-	log.SetFlags(0)
+	host := "10.72.0.22"
+	port := 8015
 
-	stan := utils.NewStan()
+	cli := client.New(
+		"client-prueba",
+		host,
+		port,
+		&pkg,
+		logger.New(
+			logger.Info,
+			true,
+		),
+	)
 
-	srv := server.New("server-amex", 1234, pkg, stan, logger.Logger{Level: logger.Info, ErrorDetail: true})
-	srv.SetHandler(server.HandleRequest)
-	srv.Run()
+	err = cli.Connect()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	cli.Listen()
+
+	//srv := server.New(
+	//	"server-prueba",
+	//	port,
+	//	&pkg,
+	//	logger.New(
+	//		logger.Info,
+	//		true,
+	//	),
+	//	examples.HandleRequest,
+	//)
+	//
+	//err = srv.Run()
+	//if err != nil {
+	//	log.Fatalf("error running server on port %d: %v", port, err)
+	//}
+}
+
+func addPackager() *packager.Packager {
+	pkg := packager.Packager{
+		Name:           "",
+		PrefixLength:   4,
+		PrefixEncoding: encoding.Hex,
+		Fields:         make(map[string]packager.Field),
+	}
+
+	fields := make(map[string]packager.Field)
+	fields["000"] = packager.Field{
+		Length:   4,
+		Encoding: encoding.Hex,
+		Prefix:   prefix.Prefix{Type: prefix.Fixed, Encoding: encoding.Bcd},
+	}
+
+	pkg.Fields = fields
+
+	return &pkg
 }

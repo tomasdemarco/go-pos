@@ -4,18 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
-	"gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583/message"
+	"github.com/tomasdemarco/iso8583/message"
 	ctx "go-pos/context"
 	"log"
 	"runtime"
 	"strings"
 	"time"
 )
-
-type Logger struct {
-	Level       LogLevel
-	ErrorDetail bool
-}
 
 func (l *Logger) ISOMessage(c *ctx.Context, message *message.Message, service ...string) (err error) {
 	if l.Level <= Info {

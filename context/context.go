@@ -2,8 +2,8 @@ package context
 
 import (
 	"github.com/google/uuid"
-	"gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583/message"
-	"gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583/utils"
+	"github.com/tomasdemarco/iso8583/message"
+	"github.com/tomasdemarco/iso8583/utils"
 	"net"
 )
 

@@ -1,4 +1,8 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583 v1.12.0 h1:VKKZqRzR+eATOyE12vJo2jpxZhQM0ffo/PG7Vyt+kCw=
-gitlab.com/g6604/adquirencia/desarrollo/golang_package/iso8583 v1.12.0/go.mod h1:AItzIvBSMMDHucWW1+6eikSRF88ADJ1RVEkW4KfAu7k=
+github.com/tomasdemarco/iso8583 v1.1.0 h1:EAt/igGWCb4q+i+7paMFYBjTDKbHaMOONaz5O8Y4G0Y=
+github.com/tomasdemarco/iso8583 v1.1.0/go.mod h1:wxFfxqSpF7I2BZtJbFvbechp7j4xe0/FZHifq0KRrNE=
+github.com/tomasdemarco/iso8583 v1.3.0 h1:sUzmLNBpJHtUgYEHtsol0ZM8QHGpwdbeI+xamFJeaOo=
+github.com/tomasdemarco/iso8583 v1.3.0/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=
+github.com/tomasdemarco/iso8583 v1.12.0 h1:VKKZqRzR+eATOyE12vJo2jpxZhQM0ffo/PG7Vyt+kCw=
+github.com/tomasdemarco/iso8583 v1.12.0/go.mod h1:AItzIvBSMMDHucWW1+6eikSRF88ADJ1RVEkW4KfAu7k=

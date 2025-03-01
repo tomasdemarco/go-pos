@@ -8,6 +8,21 @@ import (
 	"time"
 )
 
+type Logger struct {
+	Level       LogLevel
+	ErrorDetail bool
+}
+
+func New(level LogLevel, errorDetail bool) *Logger {
+	// Logs without flags
+	log.SetFlags(0)
+
+	return &Logger{
+		level,
+		errorDetail,
+	}
+}
+
 // LogEntry define la estructura del log en formato JSON
 type LogEntry struct {
 	Time        string    `json:"time,omitempty"`
