@@ -1,8 +1,12 @@
-package examples
+package main
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/tomasdemarco/iso8583/encoding"
 	"github.com/tomasdemarco/iso8583/message"
+	"github.com/tomasdemarco/iso8583/packager"
+	"github.com/tomasdemarco/iso8583/prefix"
 	"github.com/tomasdemarco/iso8583/utils"
 	ctx "go-pos/context"
 	"go-pos/logger"
@@ -11,6 +15,50 @@ import (
 	"math/rand"
 	"time"
 )
+
+func main() {
+	//pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
+	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87EAmexPackager.json")
+	if err != nil {
+		log.Fatalf("error load packager - %s", err.Error())
+	}
+
+	port := 8015
+
+	srv := server.New(
+		"server-prueba",
+		port,
+		&pkg,
+		logger.New(
+			logger.Info,
+			true,
+		),
+		HandleRequest,
+	)
+
+	err = srv.Run()
+	if err != nil {
+		log.Fatalf("error running server on port %d: %v", port, err)
+	}
+}
+
+func addPackager() *packager.Packager {
+	pkg := packager.Packager{
+		Name:   "",
+		Fields: make(map[string]packager.Field),
+	}
+
+	fields := make(map[string]packager.Field)
+	fields["000"] = packager.Field{
+		Length:   4,
+		Encoding: encoding.Hex,
+		Prefix:   prefix.Prefix{Type: prefix.Fixed, Encoding: encoding.Bcd},
+	}
+
+	pkg.Fields = fields
+
+	return &pkg
+}
 
 // HandleRequest Handle client request
 func HandleRequest(c *ctx.Context, s *server.Server) {
@@ -22,17 +70,32 @@ func HandleRequest(c *ctx.Context, s *server.Server) {
 	} else {
 		messageResponse = PrepareResponse(c.Request)
 	}
-	messageResponseRaw, _ := messageResponse.Pack()
-	lengthHexResponse := message.PackLength(messageResponseRaw, s.Packager.PrefixLength+s.Packager.HeaderLength)
+
+	messageResponseRaw, err := messageResponse.Pack()
+	if err != nil {
+		fmt.Printf("%v", err)
+	}
+
+	lengthHexResponse, err := message.PackLength(s.Packager.Prefix, len(messageResponseRaw)+s.Packager.HeaderLength)
+	if err != nil {
+		fmt.Printf("%v", err)
+	}
+
 	headerResponse := messageResponse.PackHeader(s.Packager)
 
-	s.Logger.Info(c, logger.IsoPack, messageResponseRaw, s.Name)
+	s.Logger.Info(c, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw), s.Name)
 
 	err = s.Logger.ISOMessage(c, messageResponse, s.Name)
 	if err != nil {
 		log.Printf("error %s: %v", s.Name, err)
 	}
-	_, err = c.Conn.Write(utils.Hex2Byte(lengthHexResponse + headerResponse + messageResponseRaw))
+
+	buf := new(bytes.Buffer)
+	buf.Write(lengthHexResponse)
+	buf.Write(utils.Hex2Byte(headerResponse))
+	buf.Write(messageResponseRaw)
+
+	_, err = c.Conn.Write(buf.Bytes())
 	if err != nil {
 		log.Printf("error %s: %v", s.Name, err)
 	}
@@ -41,11 +104,11 @@ func HandleRequest(c *ctx.Context, s *server.Server) {
 func PrepareResponse(messageRequest *message.Message) *message.Message {
 	messageResponse := message.NewMessage(messageRequest.Packager)
 
-	header := make(map[string]string)
-	header["01"] = messageRequest.Header["01"]
-	header["02"] = messageRequest.Header["03"]
-	header["03"] = messageRequest.Header["02"]
-	messageResponse.Header = header
+	//header := make(map[string]string)
+	//header["01"] = messageRequest.Header["01"]
+	//header["02"] = messageRequest.Header["03"]
+	//header["03"] = messageRequest.Header["02"]
+	//messageResponse.Header = header
 
 	mti, err := messageRequest.GetField("000")
 	if err == nil {
@@ -69,7 +132,7 @@ func PrepareResponse(messageRequest *message.Message) *message.Message {
 
 	messageResponse.SetField("038", de38)
 
-	messageResponse.SetField("039", "00")
+	messageResponse.SetField("039", "000")
 
 	return messageResponse
 }

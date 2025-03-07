@@ -99,13 +99,13 @@ func (s *Server) handleClient(conn net.Conn) {
 	}()
 
 	bufReader := bufio.NewReader(conn)
-	length, err := message.GetLength(bufReader)
+	length, prefixLength, err := message.GetLength(bufReader, s.Packager.Prefix)
 	if err != nil {
 		if err != io.EOF {
 			return
 		}
 
-		s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v. server-%s", conn.RemoteAddr().String(), err, s.Name)))
+		s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
 	}
 
 	recvBuf := make([]byte, length)
@@ -114,20 +114,20 @@ func (s *Server) handleClient(conn net.Conn) {
 		b := recvBuf[:n]
 		messageRaw := fmt.Sprintf("%x", b)
 
-		if len(messageRaw) > s.Packager.PrefixLength+s.Packager.HeaderLength {
+		if len(messageRaw) > prefixLength+s.Packager.HeaderLength {
 			messageGp := message.NewMessage(s.Packager)
-
-			length, err = message.UnpackLength(b)
-			if err != nil {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
-			}
+			//
+			//length, err = message.UnpackLength(b)
+			//if err != nil {
+			//	s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
+			//}
 			messageGp.Length = length
 
 			messageGp.Header, err = message.UnpackHeader(messageRaw, s.Packager)
 			if err != nil {
 				s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
 			} else {
-				err = messageGp.Unpack(messageRaw[s.Packager.HeaderLength:])
+				err = messageGp.Unpack(b[s.Packager.HeaderLength/2:])
 				if err != nil {
 					s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
 				} else {
@@ -136,7 +136,7 @@ func (s *Server) handleClient(conn net.Conn) {
 					c.Conn = conn
 					c.Request = messageGp
 
-					s.Logger.Info(c, logger.IsoUnpack, messageRaw[s.Packager.PrefixLength+s.Packager.HeaderLength:], s.Name)
+					s.Logger.Info(c, logger.IsoUnpack, messageRaw[s.Packager.HeaderLength:], s.Name)
 					err = s.Logger.ISOMessage(c, messageGp, s.Name)
 					if err != nil {
 						s.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), s.Name)
@@ -147,7 +147,7 @@ func (s *Server) handleClient(conn net.Conn) {
 			}
 		}
 
-		length, err = message.GetLength(bufReader)
+		length, prefixLength, err = message.GetLength(bufReader, s.Packager.Prefix)
 		if err == nil {
 			recvBuf = make([]byte, length)
 			n, err = bufReader.Read(recvBuf)

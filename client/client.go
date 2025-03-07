@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/tomasdemarco/iso8583/message"
@@ -31,12 +32,13 @@ type Client struct {
 
 type HandlerFunc func(*ctx.Context, *Client)
 
-func New(name string, host string, port int, packager *packager.Packager, logger *logger.Logger) *Client {
+func New(name string, host string, port int, timeout int, packager *packager.Packager, logger *logger.Logger) *Client {
 	client := Client{
 		Name:     name,
 		Network:  "tcp",
 		Host:     host,
 		Port:     port,
+		Timeout:  time.Duration(timeout) * time.Millisecond,
 		Packager: packager,
 		Stan:     utils.NewStan(),
 		Logger:   logger,
@@ -72,6 +74,19 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// Disconnect connection to the server
+func (c *Client) Disconnect() error {
+
+	err := c.Conn.Close()
+	if err != nil {
+		return err
+	}
+
+	c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()), c.Name)
+
+	return nil
+}
+
 // Listen for connection to the server
 func (c *Client) Listen() {
 	defer func() {
@@ -85,12 +100,16 @@ func (c *Client) Listen() {
 
 	//Cierra la conexion con el cliente al retornar
 	defer func() {
+		err := c.Conn.Close()
+		if err != nil {
+			return
+		}
+
 		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()), c.Name)
-		c.Conn.Close()
 	}()
 
 	bufReader := bufio.NewReader(c.Conn)
-	length, err := message.GetLength(bufReader)
+	length, prefixLength, err := message.GetLength(bufReader, c.Packager.Prefix)
 	if err != nil {
 		if err != io.EOF {
 			return
@@ -105,7 +124,7 @@ func (c *Client) Listen() {
 		b := recvBuf[:n]
 		messageRaw := fmt.Sprintf("%x", b)
 
-		if len(messageRaw) > c.Packager.PrefixLength+c.Packager.HeaderLength {
+		if len(messageRaw) > prefixLength+c.Packager.HeaderLength {
 			msgResponse := message.NewMessage(c.Packager)
 
 			length, err = message.UnpackLength(b)
@@ -118,7 +137,7 @@ func (c *Client) Listen() {
 			if err != nil {
 				c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
 			} else {
-				err = msgResponse.Unpack(messageRaw[c.Packager.HeaderLength:])
+				err = msgResponse.Unpack(b[c.Packager.HeaderLength/2:])
 				if err != nil {
 					c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
 				} else {
@@ -126,7 +145,7 @@ func (c *Client) Listen() {
 					ct := ctx.New(c.Stan)
 					//c.Response = msgResponse
 
-					c.Logger.Info(ct, logger.IsoUnpack, messageRaw[c.Packager.PrefixLength+c.Packager.HeaderLength:], c.Name)
+					c.Logger.Info(ct, logger.IsoUnpack, messageRaw[c.Packager.HeaderLength:], c.Name)
 					err = c.Logger.ISOMessage(ct, msgResponse, c.Name)
 					if err != nil {
 						c.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), c.Name)
@@ -143,7 +162,7 @@ func (c *Client) Listen() {
 			}
 		}
 
-		length, err = message.GetLength(bufReader)
+		length, prefixLength, err = message.GetLength(bufReader, c.Packager.Prefix)
 		if err == nil {
 			recvBuf = make([]byte, length)
 			n, err = bufReader.Read(recvBuf)
@@ -162,19 +181,32 @@ func IsClosed(ch <-chan message.Message) bool {
 }
 
 // Send message for the connection to the server
-func (c *Client) Send(ctx *ctx.Context, msg message.Message) {
-	messageResponseRaw, _ := msg.Pack()
-	lengthHexResponse := message.PackLength(messageResponseRaw, c.Packager.HeaderLength)
+func (c *Client) Send(ctx *ctx.Context, msg message.Message) error {
+	messageResponseRaw, err := msg.Pack()
+	if err != nil {
+		return err
+	}
+
+	lengthPacked, err := message.PackLength(c.Packager.Prefix, len(messageResponseRaw)+c.Packager.HeaderLength)
+	if err != nil {
+		return err
+	}
+
 	headerResponse := msg.PackHeader(c.Packager)
 
-	c.Logger.Info(ctx, logger.IsoPack, messageResponseRaw)
+	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw))
 
-	err := c.Logger.ISOMessage(ctx, &msg, c.Name)
+	err = c.Logger.ISOMessage(ctx, &msg, c.Name)
 	if err != nil {
 		c.Logger.Error(ctx, err, c.Name)
 	}
 
-	_, err = c.Conn.Write(utils.Hex2Byte(lengthHexResponse + headerResponse + messageResponseRaw))
+	buf := new(bytes.Buffer)
+	buf.Write(lengthPacked)
+	buf.Write(utils.Hex2Byte(headerResponse))
+	buf.Write(messageResponseRaw)
+
+	_, err = c.Conn.Write(buf.Bytes())
 	if err != nil {
 		c.Logger.Error(ctx, err, c.Conn.RemoteAddr().String())
 	}
@@ -184,6 +216,8 @@ func (c *Client) Send(ctx *ctx.Context, msg message.Message) {
 	messageId := date + trace
 
 	c.OngoingTransactions.Add(messageId, &ctx.Id)
+
+	return nil
 }
 
 // Wait for server response

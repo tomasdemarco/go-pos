@@ -1,17 +1,18 @@
 {
 	"name": "ISO87EAmexPackager",
-	"prefixLength": 4,
+	"prefix": {
+		"type": "LLLL",
+		"encoding": "HEX"
+	},
 	"header": null,
 	"headerLength": 0,
-	"prefixEncoding": "HEXN",
 	"fields": {
 		"000": {
 			"type": "NUMERIC",
 			"length": 4,
 			"name": "MESSAGE TYPE IDENTIFIER",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -20,8 +21,7 @@
 			"length": 16,
 			"name": "BIT MAP - SECONDARY",
 			"encoding": "BCD",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -30,8 +30,10 @@
 			"length": 21,
 			"name": " PRIMARY ACCOUNT NUMBER (PAN)",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -40,8 +42,7 @@
 			"length": 6,
 			"name": "PROCESSING CODE",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -50,18 +51,16 @@
 			"length": 12,
 			"name": "Transaction Amount",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
-		},
+		},			"prefix": null,
 		"007": {
 			"type": "NUMERIC",
 			"length": 10,
 			"name": "Transmission Date & Time",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -70,8 +69,7 @@
 			"length": 8,
 			"name": "Cardholder Billing Conversion Rate",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -80,8 +78,7 @@
 			"length": 6,
 			"name": "Systems Trace Audit Number (STAN)",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -90,8 +87,7 @@
 			"length": 12,
 			"name": "Local Transaction Datetime",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -100,8 +96,7 @@
 			"length": 4,
 			"name": "DATE, EFFECTIVE",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -110,8 +105,7 @@
 			"length": 4,
 			"name": "Expiration Date",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -120,8 +114,7 @@
 			"length": 3,
 			"name": "Acquiring Institution Country Code",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -130,8 +123,7 @@
 			"length": 12,
 			"name": "POINT OF SERVICE DATA CODE",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -140,8 +132,7 @@
 			"length": 3,
 			"name": "Function Code",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -150,8 +141,7 @@
 			"length": 4,
 			"name": "MESSAGE REASON CODE",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -160,8 +150,7 @@
 			"length": 4,
 			"name": "CARD ACCEPTOR BUSINESS CODE",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -170,8 +159,7 @@
 			"length": 1,
 			"name": "APPROVAL CODE LENGTH",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -180,8 +168,10 @@
 			"length": 99,
 			"name": "ACQUIRER REFERENCE DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -190,8 +180,10 @@
 			"length": 13,
 			"name": "Acquiring Institution Identification Code",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -200,8 +192,10 @@
 			"length": 13,
 			"name": "Forwarding Institution Identification Code",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -210,8 +204,10 @@
 			"length": 37,
 			"name": "Track 2 Data",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -220,8 +216,7 @@
 			"length": 12,
 			"name": "Retrieval Reference Number",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -230,8 +225,7 @@
 			"length": 6,
 			"name": "Retrieval Reference Number",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -240,8 +234,7 @@
 			"length": 3,
 			"name": "Retrieval Reference Number",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -250,8 +243,7 @@
 			"length": 8,
 			"name": "Card Acceptor Terminal Identification",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -260,8 +252,7 @@
 			"length": 15,
 			"name": "Card Acceptor Identification Code",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -270,8 +261,10 @@
 			"length": 99,
 			"name": "Card Acceptor Name/Location",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -280,8 +273,10 @@
 			"length": 99,
 			"name": "Additional data (Private)",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -290,8 +285,10 @@
 			"length": 78,
 			"name": "Track 1 Data",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -300,8 +297,10 @@
 			"length": 304,
 			"name": "Additional data (National)",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -310,8 +309,10 @@
 			"length": 43,
 			"name": "Additional data (Private)",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -320,8 +321,7 @@
 			"length": 3,
 			"name": "Transaction Currency Code",
 			"encoding": "EBCDIC",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -330,8 +330,7 @@
 			"length": 8,
 			"name": "PERSONAL IDENTIFICATION NUMBER (PIN) DATA",
 			"encoding": "BCD",
-			"prefix": "FIXED",
-			"prefixEncoding": null,
+			"prefix": null,
 			"padding": null,
 			"subFields": null
 		},
@@ -340,8 +339,10 @@
 			"length": 99,
 			"name": "Security Related Control Information",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -350,8 +351,10 @@
 			"length": 999,
 			"name": "INTEGRATED CIRCUIT CARD SYSTEM RELATED DATA (ICC Data)",
 			"encoding": "BCD",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -360,19 +363,22 @@
 			"length": 999,
 			"name": "INTEGRATED CIRCUIT CARD SYSTEM RELATED DATA (ICC Data)",
 			"encoding": "EBCDIC",
-			"prefix": "LL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
-
 		"060": {
 			"type": "STRING",
 			"length": 143,
 			"name": "NATIONAL USE DATA",
-			"encoding": "ANS",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"encoding": "BINARY",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -381,8 +387,10 @@
 			"length": 103,
 			"name": "NATIONAL USE DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -391,8 +399,10 @@
 			"length": 63,
 			"name": "PRIVATE USE DATA",
 			"encoding": "BCD",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -401,8 +411,10 @@
 			"length": 208,
 			"name": "PRIVATE USE DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -411,8 +423,10 @@
 			"length": 17,
 			"name": "KEY MANAGEMENT DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -421,8 +435,10 @@
 			"length": 9999,
 			"name": "ENCRYPTION DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -431,8 +447,10 @@
 			"length": 82,
 			"name": "PAYMENT ACCOUNT DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -441,8 +459,10 @@
 			"length": 18,
 			"name": "ACCEPTANCE ENVIRONMENT DATA",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		},
@@ -451,8 +471,10 @@
 			"length": 999,
 			"name": "Reserved (Private)",
 			"encoding": "EBCDIC",
-			"prefix": "LLL",
-			"prefixEncoding": "EBCDIC",
+			"prefix": {
+				"type": "LLL",
+				"encoding": "EBCDIC"
+			},
 			"padding": null,
 			"subFields": null
 		}
