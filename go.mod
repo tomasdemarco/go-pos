@@ -1,4 +1,4 @@
-module go-pos
+module github.com/tomasdemarco/go-pos
 
 go 1.22.0
 

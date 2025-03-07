@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/tomasdemarco/go-pos/client"
+	"github.com/tomasdemarco/go-pos/context"
+	"github.com/tomasdemarco/go-pos/logger"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
-	"go-pos/client"
-	"go-pos/context"
-	"go-pos/logger"
 	"log"
 )
 

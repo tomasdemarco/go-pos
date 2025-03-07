@@ -3,7 +3,7 @@ package logger
 import (
 	"encoding/json"
 	"github.com/google/uuid"
-	ctx "go-pos/context"
+	ctx "github.com/tomasdemarco/go-pos/context"
 	"log"
 	"time"
 )
