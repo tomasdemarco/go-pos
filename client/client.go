@@ -7,13 +7,13 @@ import (
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
+	length2 "github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
 	"github.com/tomasdemarco/iso8583/utils"
 	"io"
 	"net"
 	"runtime/debug"
-	"sync"
 	"time"
 )
 
@@ -24,28 +24,47 @@ type Client struct {
 	Port                int
 	Timeout             time.Duration
 	Conn                *net.TCPConn
+	Reader              *bufio.Reader
+	Writer              *bufio.Writer
 	OngoingTransactions *OngoingTransactions
 	Packager            *packager.Packager
+	MatchFields         []string
 	Stan                *utils.Stan
 	Logger              *logger.Logger
+	HeaderPackFunc      func(interface{}) (valueRaw []byte, err error)
+	HeaderUnpackFunc    func(r io.Reader) (value interface{}, length int, err error)
 }
 
-type HandlerFunc func(*ctx.Context, *Client)
+type HandlerFunc func(*ctx.RequestContext, *Client)
 
-func New(name string, host string, port int, timeout int, packager *packager.Packager, logger *logger.Logger) *Client {
+func New(
+	name string,
+	host string,
+	port int,
+	timeout int,
+	packager *packager.Packager,
+	matchFields *[]string,
+	logger *logger.Logger,
+	headerPackFunc func(interface{}) (valueRaw []byte, err error),
+	headerUnpackFunc func(r io.Reader) (value interface{}, length int, err error),
+) *Client {
 	client := Client{
-		Name:     name,
-		Network:  "tcp",
-		Host:     host,
-		Port:     port,
-		Timeout:  time.Duration(timeout) * time.Millisecond,
-		Packager: packager,
-		Stan:     utils.NewStan(),
-		Logger:   logger,
-		OngoingTransactions: &OngoingTransactions{
-			List: make(map[string]OngoingTransaction),
-			mu:   &sync.RWMutex{},
-		},
+		Name:                name,
+		Network:             "tcp",
+		Host:                host,
+		Port:                port,
+		Timeout:             time.Duration(timeout) * time.Millisecond,
+		Packager:            packager,
+		MatchFields:         []string{"000", "007", "011"},
+		Stan:                utils.NewStan(),
+		Logger:              logger,
+		OngoingTransactions: NewOngoingTransactions(),
+		HeaderPackFunc:      headerPackFunc,
+		HeaderUnpackFunc:    headerUnpackFunc,
+	}
+
+	if matchFields != nil {
+		client.MatchFields = *matchFields
 	}
 
 	return &client
@@ -59,15 +78,16 @@ func (c *Client) Connect() error {
 		return err
 	}
 
-	conn, err := net.DialTCP(c.Network, nil, tcpAddr)
+	c.Conn, err = net.DialTCP(c.Network, nil, tcpAddr)
 	if err != nil {
 		c.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s", tcpAddr.String()), c.Name)
 		return err
 	}
 
-	c.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", tcpAddr.String()), c.Name)
+	c.Reader = bufio.NewReader(c.Conn)
+	c.Writer = bufio.NewWriter(c.Conn)
 
-	c.Conn = conn
+	c.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", tcpAddr.String()), c.Name)
 
 	go c.Listen()
 
@@ -108,126 +128,149 @@ func (c *Client) Listen() {
 		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()), c.Name)
 	}()
 
-	bufReader := bufio.NewReader(c.Conn)
-	length, prefixLength, err := message.GetLength(bufReader, c.Packager.Prefix)
-	if err != nil {
-		if err != io.EOF {
-			return
+	for {
+		length, err := length2.Unpack(c.Reader, c.Packager.Prefix)
+		if err != nil {
+			if err != io.EOF {
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+			}
+			break
 		}
 
-		c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: %v. server-%s", c.Conn.RemoteAddr().String(), err, c.Name)))
-	}
+		if length <= 0 {
+			continue
+		}
 
-	recvBuf := make([]byte, length)
-	n, err := bufReader.Read(recvBuf)
-	for err == nil {
-		b := recvBuf[:n]
-		messageRaw := fmt.Sprintf("%x", b)
-
-		if len(messageRaw) > prefixLength+c.Packager.HeaderLength {
-			msgResponse := message.NewMessage(c.Packager)
-
-			length, err = message.UnpackLength(b)
-			if err != nil {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+		msgRes := message.NewMessage(c.Packager)
+		msgRes.Length = length
+		_, headerLength, err := c.HeaderUnpackFunc(c.Reader)
+		if err != nil {
+			if err != io.EOF {
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
 			}
-			msgResponse.Length = length
+			break
+		}
 
-			msgResponse.Header, err = message.UnpackHeader(messageRaw, c.Packager)
-			if err != nil {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
-			} else {
-				err = msgResponse.Unpack(b[c.Packager.HeaderLength/2:])
+		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", length), c.Name)
+
+		msgRaw := make([]byte, length-headerLength)
+		_, err = c.Reader.Read(msgRaw)
+		if err != nil {
+			if err != io.EOF {
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+			}
+			break
+		}
+
+		c.Logger.Debug(nil, fmt.Sprintf("received a message: %x", msgRaw), c.Name)
+
+		err = msgRes.Unpack(msgRaw)
+		if err != nil {
+			c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+		} else {
+			var messageId string
+			for _, v := range c.MatchFields {
+				value, _ := msgRes.GetField(v)
+				messageId += value
+			}
+
+			if c.OngoingTransactions.List[messageId].Message != nil || !c.OngoingTransactions.IsChanClosed(messageId) {
+				c.Logger.Debug(c.OngoingTransactions.List[messageId].Ctx, fmt.Sprintf("received a message, id: %s", messageId), c.Name)
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw), c.Name)
+
+				err = c.Logger.ISOMessage(c.OngoingTransactions.List[messageId].Ctx, msgRes, c.Name)
 				if err != nil {
-					c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
-				} else {
+					c.Logger.Error(c.OngoingTransactions.List[messageId].Ctx, errors.New(fmt.Sprintf("err: %v", err)), c.Name)
+				}
 
-					ct := ctx.New(c.Stan)
-					//c.Response = msgResponse
+				c.OngoingTransactions.List[messageId].Message <- *msgRes
+			} else {
+				c.Logger.Debug(nil, fmt.Sprintf("received an unmatched message, id: %s", messageId), c.Name)
+				c.Logger.Info(nil, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw), c.Name)
 
-					c.Logger.Info(ct, logger.IsoUnpack, messageRaw[c.Packager.HeaderLength:], c.Name)
-					err = c.Logger.ISOMessage(ct, msgResponse, c.Name)
-					if err != nil {
-						c.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), c.Name)
-					}
-
-					date, _ := msgResponse.GetField("007")
-					trace, _ := msgResponse.GetField("011")
-					messageId := date + trace
-
-					if c.OngoingTransactions.List[messageId].Message != nil || !IsClosed(c.OngoingTransactions.List[messageId].Message) {
-						c.OngoingTransactions.List[messageId].Message <- *msgResponse
-					}
+				err = c.Logger.ISOMessage(c.OngoingTransactions.List[messageId].Ctx, msgRes, c.Name)
+				if err != nil {
+					c.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), c.Name)
 				}
 			}
 		}
-
-		length, prefixLength, err = message.GetLength(bufReader, c.Packager.Prefix)
-		if err == nil {
-			recvBuf = make([]byte, length)
-			n, err = bufReader.Read(recvBuf)
-		}
 	}
-}
-
-func IsClosed(ch <-chan message.Message) bool {
-	select {
-	case <-ch:
-		return true
-	default:
-	}
-
-	return false
 }
 
 // Send message for the connection to the server
-func (c *Client) Send(ctx *ctx.Context, msg message.Message) error {
+func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	messageResponseRaw, err := msg.Pack()
 	if err != nil {
 		return err
 	}
 
-	lengthPacked, err := message.PackLength(c.Packager.Prefix, len(messageResponseRaw)+c.Packager.HeaderLength)
+	lengthPacked, err := length2.Pack(c.Packager.Prefix, len(messageResponseRaw)+c.Packager.HeaderLength/2+c.Packager.FooterLength)
 	if err != nil {
 		return err
 	}
 
-	headerResponse := msg.PackHeader(c.Packager)
+	headerResponse, err := c.HeaderPackFunc([]byte{0x60, 0x00, 0x00, 0x00, 0x00})
 
 	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw))
 
-	err = c.Logger.ISOMessage(ctx, &msg, c.Name)
+	err = c.Logger.ISOMessage(ctx, msg, c.Name)
 	if err != nil {
 		c.Logger.Error(ctx, err, c.Name)
 	}
 
+	var messageId string
+	for _, v := range c.MatchFields {
+		if v == "000" {
+			value, _ := ctx.Request.GetField(v)
+			messageId += utils.GetMtiResponse(value)
+		} else {
+			value, _ := ctx.Request.GetField(v)
+			messageId += value
+		}
+	}
+
+	c.OngoingTransactions.Add(ctx, messageId)
+
 	buf := new(bytes.Buffer)
 	buf.Write(lengthPacked)
-	buf.Write(utils.Hex2Byte(headerResponse))
+	buf.Write(headerResponse)
 	buf.Write(messageResponseRaw)
 
-	_, err = c.Conn.Write(buf.Bytes())
+	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {
 		c.Logger.Error(ctx, err, c.Conn.RemoteAddr().String())
 	}
 
-	date, _ := msg.GetField("007")
-	trace, _ := msg.GetField("011")
-	messageId := date + trace
+	err = c.Writer.Flush()
+	if err != nil {
+		c.Logger.Error(ctx, err, c.Conn.RemoteAddr().String())
+	}
 
-	c.OngoingTransactions.Add(messageId, &ctx.Id)
+	c.Logger.Debug(nil, fmt.Sprintf("sent a message: %x", buf.Bytes()), c.Name)
 
 	return nil
 }
 
 // Wait for server response
-func (c *Client) Wait(ctx *ctx.Context, id string) (*message.Message, error) {
-	defer c.OngoingTransactions.Remove(id)
+func (c *Client) Wait(reqCtx *ctx.RequestContext) (*message.Message, error) {
+	var messageId string
+	for _, v := range c.MatchFields {
+		if v == "000" {
+			value, _ := reqCtx.Request.GetField(v)
+			messageId += utils.GetMtiResponse(value)
+		} else {
+			value, _ := reqCtx.Request.GetField(v)
+			messageId += value
+		}
+	}
+
+	defer c.OngoingTransactions.Remove(messageId)
 
 	select {
 	case <-time.After(c.Timeout):
-		return nil, errors.New("transaction timout")
-	case msg := <-c.OngoingTransactions.List[id].Message:
+		return nil, errors.New(fmt.Sprintf("transaction %s timeout", messageId))
+	case msg := <-c.OngoingTransactions.List[messageId].Message:
+		c.Logger.Debug(reqCtx, fmt.Sprintf("received a message channel, id: %s", messageId), c.Name)
 		return &msg, nil
 	}
 }

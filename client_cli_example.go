@@ -1,0 +1,135 @@
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"github.com/tomasdemarco/go-pos/client"
+	"github.com/tomasdemarco/go-pos/context"
+	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/iso8583/message"
+	"github.com/tomasdemarco/iso8583/packager"
+	"io"
+	"log"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+func main() {
+	// Define flags
+	file := flag.String("f", "", "json file to build ISO message")
+	ayuda := flag.Bool("h", false, "show help")
+
+	// Analiza los flags
+	flag.Parse()
+
+	// Muestra la ayuda si se especifica el flag -ayuda
+	if *ayuda {
+		flag.Usage()
+		return
+	}
+
+	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
+	if err != nil {
+		log.Fatalf("error load packager - %s", err.Error())
+	}
+
+	//	host := "127.0.0.1"
+	host := "10.72.0.22"
+	port := 8015
+
+	cli := client.New(
+		"client-prueba",
+		host,
+		port,
+		20000,
+		&pkg,
+		logger.New(
+			logger.Info,
+			true,
+		),
+	)
+
+	err = cli.Connect()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	ctx := context.New(cli.Stan)
+
+	msg, err := buildMessageByFile(ctx, *file, &pkg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	err = cli.Send(ctx, *msg)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	_, err = cli.Wait(ctx, "0227152417000001")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+
+	err = cli.Disconnect()
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+}
+
+func buildMessageByFile(ctx *context.Context, file string, pkg *packager.Packager) (*message.Message, error) {
+	absPath, err := filepath.Abs(file)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonFile, err := os.Open(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	byteValue, err := io.ReadAll(jsonFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var fields map[string]interface{}
+
+	err = json.Unmarshal(byteValue, &fields)
+	if err != nil {
+		return nil, err
+	}
+	defer jsonFile.Close()
+
+	msg := message.NewMessage(pkg)
+
+	header := make(map[string]string)
+	header["01"] = "60"
+	header["02"] = "0001"
+	header["03"] = "0000"
+	msg.Header = header
+
+	now := time.Now()
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	msg.SetField("004", fmt.Sprintf("%012d", random.Intn(99999999-100)+100))
+	msg.SetField("007", now.Format("0102150405"))
+	msg.SetField("011", fmt.Sprintf("%06d", ctx.Stan))
+	msg.SetField("012", now.Format("150405"))
+	msg.SetField("013", now.Format("0102"))
+
+	for k, v := range fields {
+		msg.SetField(fmt.Sprintf("%03s", k), v)
+	}
+
+	jsonData, err := json.Marshal(msg.Fields)
+	if err != nil {
+		log.Fatalf("failed to marshal JSON: %v", err)
+	}
+	log.Println(string(jsonData))
+
+	return msg, nil
+}

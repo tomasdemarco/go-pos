@@ -1,10 +1,9 @@
 package client
 
 import (
-	"github.com/google/uuid"
+	"github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/iso8583/message"
 	"sync"
-	"time"
 )
 
 type OngoingTransactions struct {
@@ -13,9 +12,8 @@ type OngoingTransactions struct {
 }
 
 type OngoingTransaction struct {
-	RequestId *uuid.UUID
-	StartTime time.Time
-	Message   chan message.Message
+	Ctx     *context.RequestContext
+	Message chan message.Message
 }
 
 func NewOngoingTransactions() *OngoingTransactions {
@@ -25,15 +23,13 @@ func NewOngoingTransactions() *OngoingTransactions {
 	}
 }
 
-func (s *OngoingTransactions) Add(key string, id *uuid.UUID) chan message.Message {
+func (s *OngoingTransactions) Add(ctx *context.RequestContext, key string) chan message.Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
-
 	msgChan := make(chan message.Message, 1)
 
-	transaction := OngoingTransaction{id, now, msgChan}
+	transaction := OngoingTransaction{ctx, msgChan}
 
 	s.List[key] = transaction
 
@@ -45,4 +41,14 @@ func (s *OngoingTransactions) Remove(id string) {
 	defer s.mu.Unlock()
 
 	delete(s.List, id)
+}
+
+func (s *OngoingTransactions) IsChanClosed(id string) bool {
+	select {
+	case <-s.List[id].Message:
+		return true
+	default:
+	}
+
+	return false
 }

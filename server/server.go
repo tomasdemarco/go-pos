@@ -1,11 +1,11 @@
 package server
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
+	length2 "github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
 	"github.com/tomasdemarco/iso8583/utils"
@@ -15,28 +15,45 @@ import (
 )
 
 type Server struct {
-	Name        string
-	Network     string
-	Port        int
-	Packager    *packager.Packager
-	Stan        *utils.Stan
-	Logger      *logger.Logger
-	HandlerFunc func(c *ctx.Context)
+	Name             string
+	Network          string
+	Port             int
+	Packager         *packager.Packager
+	Stan             *utils.Stan
+	Logger           *logger.Logger
+	HandlerFunc      func(c *ctx.RequestContext)
+	HeaderPackFunc   func(interface{}) (valueRaw []byte, err error)
+	HeaderUnpackFunc func(r io.Reader) (value interface{}, length int, err error)
+	maxClients       int
+	sem              chan struct{}
 }
 
-type HandlerFunc func(*ctx.Context, *Server)
+type HandlerFunc func(*ctx.RequestContext, *Server)
+type HeaderPackFunc func(interface{}) (valueRaw []byte, err error)
+type HeaderUnpackFunc func(r io.Reader) (value interface{}, length int, err error)
 
-func New(name string, port int, packager *packager.Packager, logger *logger.Logger, handlerFunc HandlerFunc) *Server {
+func New(
+	name string,
+	port int,
+	packager *packager.Packager,
+	logger *logger.Logger,
+	handlerFunc HandlerFunc,
+	headerPackFunc HeaderPackFunc,
+	headerUnpackFunc HeaderUnpackFunc,
+) *Server {
+
 	server := Server{
-		Name:     name,
-		Network:  "tcp",
-		Port:     port,
-		Packager: packager,
-		Stan:     utils.NewStan(),
-		Logger:   logger,
+		Name:             name,
+		Network:          "tcp",
+		Port:             port,
+		Packager:         packager,
+		Stan:             utils.NewStan(),
+		Logger:           logger,
+		HeaderPackFunc:   headerPackFunc,
+		HeaderUnpackFunc: headerUnpackFunc,
 	}
 
-	server.HandlerFunc = func(c *ctx.Context) {
+	server.HandlerFunc = func(c *ctx.RequestContext) {
 		handlerFunc(c, &server)
 	}
 
@@ -76,13 +93,15 @@ func (s *Server) listenClient(listener net.Listener) {
 			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", conn.RemoteAddr().String()), s.Name)
 			s.Logger.Info(nil, logger.Message, fmt.Sprintf("accept local port %s / remote host %s", conn.LocalAddr().String(), conn.RemoteAddr().String()), s.Name)
 
-			go s.handleClient(conn)
+			clientCtx := ctx.NewClientContext(conn)
+
+			go s.handleClient(clientCtx)
 		}
 	}
 }
 
 // Maneja los clientes que se conectan al switch
-func (s *Server) handleClient(conn net.Conn) {
+func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
@@ -94,67 +113,60 @@ func (s *Server) handleClient(conn net.Conn) {
 
 	//Cierra la conexion con el cliente al retornar
 	defer func() {
-		s.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", conn.RemoteAddr().String()), s.Name)
-		conn.Close()
-	}()
-
-	bufReader := bufio.NewReader(conn)
-	length, prefixLength, err := message.GetLength(bufReader, s.Packager.Prefix)
-	if err != nil {
-		if err != io.EOF {
+		s.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", clientCtx.Conn.RemoteAddr().String()), s.Name)
+		err := clientCtx.Conn.Close()
+		if err != nil {
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
 			return
 		}
+	}()
 
-		s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
-	}
-
-	recvBuf := make([]byte, length)
-	n, err := bufReader.Read(recvBuf)
-	for err == nil {
-		b := recvBuf[:n]
-		messageRaw := fmt.Sprintf("%x", b)
-
-		if len(messageRaw) > prefixLength+s.Packager.HeaderLength {
-			messageGp := message.NewMessage(s.Packager)
-			//
-			//length, err = message.UnpackLength(b)
-			//if err != nil {
-			//	s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
-			//}
-			messageGp.Length = length
-
-			messageGp.Header, err = message.UnpackHeader(messageRaw, s.Packager)
-			if err != nil {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
-			} else {
-				err = messageGp.Unpack(b[s.Packager.HeaderLength/2:])
-				if err != nil {
-					s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
-				} else {
-
-					c := ctx.New(s.Stan)
-					c.Conn = conn
-					c.Request = messageGp
-
-					s.Logger.Info(c, logger.IsoUnpack, messageRaw[s.Packager.HeaderLength:], s.Name)
-					err = s.Logger.ISOMessage(c, messageGp, s.Name)
-					if err != nil {
-						s.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), s.Name)
-					}
-
-					go s.HandlerFunc(c)
-				}
+	for {
+		length, err := length2.Unpack(clientCtx.Reader, s.Packager.Prefix)
+		if err != nil {
+			if err != io.EOF {
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
 			}
+			break
 		}
 
-		length, prefixLength, err = message.GetLength(bufReader, s.Packager.Prefix)
-		if err == nil {
-			recvBuf = make([]byte, length)
-			n, err = bufReader.Read(recvBuf)
-		}
-	}
+		s.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", length), s.Name)
 
-	if err != io.EOF {
-		s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", conn.RemoteAddr().String(), err)), s.Name)
+		msgReq := message.NewMessage(s.Packager)
+
+		msgReq.Length = length
+		_, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
+		if err != nil {
+			if err != io.EOF {
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+			}
+			break
+		}
+
+		msgRaw := make([]byte, length-headerLength)
+		_, err = clientCtx.Reader.Read(msgRaw)
+		if err != nil {
+			if err != io.EOF {
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+			}
+			break
+		}
+
+		s.Logger.Debug(nil, fmt.Sprintf("received a message, : %x", msgRaw), s.Name)
+
+		err = msgReq.Unpack(msgRaw)
+		if err != nil {
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+		} else {
+			c := ctx.NewRequestContext(clientCtx, msgReq)
+
+			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw), s.Name)
+			err = s.Logger.ISOMessage(c, msgReq, s.Name)
+			if err != nil {
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), s.Name)
+			}
+
+			go s.HandlerFunc(c)
+		}
 	}
 }

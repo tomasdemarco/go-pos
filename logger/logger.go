@@ -9,17 +9,15 @@ import (
 )
 
 type Logger struct {
-	Level       LogLevel
-	ErrorDetail bool
+	Level LogLevel
 }
 
-func New(level LogLevel, errorDetail bool) *Logger {
+func New(level LogLevel) *Logger {
 	// Logs without flags
 	log.SetFlags(0)
 
 	return &Logger{
 		level,
-		errorDetail,
 	}
 }
 
@@ -33,7 +31,7 @@ type LogEntry struct {
 }
 
 // CustomLogger es un middleware para loguear en formato JSON
-func CustomLogger(c *ctx.Context) {
+func CustomLogger(c *ctx.RequestContext) {
 	//gin.HandlerFunc {
 	//	return func(c *ctx.Context){
 

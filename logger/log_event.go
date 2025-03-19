@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (l *Logger) ISOMessage(c *ctx.Context, message *message.Message, service ...string) (err error) {
+func (l *Logger) ISOMessage(c *ctx.RequestContext, message *message.Message, service ...string) (err error) {
 	if l.Level <= Info {
 		mti, err := message.GetField("000")
 		if err != nil {
@@ -59,7 +59,7 @@ func (l *Logger) ISOMessage(c *ctx.Context, message *message.Message, service ..
 	return nil
 }
 
-func (l *Logger) Info(c *ctx.Context, logType LogType, i interface{}, service ...string) {
+func (l *Logger) Info(c *ctx.RequestContext, logType LogType, i interface{}, service ...string) {
 	if l.Level <= Info {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
@@ -80,7 +80,7 @@ func (l *Logger) Info(c *ctx.Context, logType LogType, i interface{}, service ..
 	}
 }
 
-func (l *Logger) Debug(c *ctx.Context, logType LogType, i interface{}, service ...string) {
+func (l *Logger) Debug(c *ctx.RequestContext, i interface{}, service ...string) {
 	if l.Level == Debug {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
@@ -95,13 +95,13 @@ func (l *Logger) Debug(c *ctx.Context, logType LogType, i interface{}, service .
 			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
 		}
 
-		sb.WriteString(fmt.Sprintf(",\"%s\":%s}", logType.String(), i))
+		sb.WriteString(fmt.Sprintf(",\"debug\":\"%s\"}", i))
 
 		log.Printf("%s", sb.String())
 	}
 }
 
-func (l *Logger) Error(c *ctx.Context, err error, service ...string) {
+func (l *Logger) Error(c *ctx.RequestContext, err error, service ...string) {
 	if l.Level <= Error {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
@@ -116,7 +116,7 @@ func (l *Logger) Error(c *ctx.Context, err error, service ...string) {
 			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
 		}
 
-		if l.ErrorDetail {
+		if l.Level == Debug {
 			pc, file, line, _ := runtime.Caller(1)
 
 			value, errMarshal := json.Marshal(fmt.Sprintf("%v - %s[%s:%d]", err, runtime.FuncForPC(pc).Name(), file, line))
@@ -133,7 +133,7 @@ func (l *Logger) Error(c *ctx.Context, err error, service ...string) {
 	}
 }
 
-func (l *Logger) Panic(c *ctx.Context, err error, panic []byte, service ...string) {
+func (l *Logger) Panic(c *ctx.RequestContext, err error, panic []byte, service ...string) {
 	if l.Level <= Fatal {
 		var sbStack strings.Builder
 		stack := strings.Split(strings.Replace(string(panic), "\t", "", -1), "\n")
