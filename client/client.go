@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
+	"github.com/tomasdemarco/go-pos/footer"
+	"github.com/tomasdemarco/go-pos/header"
 	"github.com/tomasdemarco/go-pos/logger"
-	length2 "github.com/tomasdemarco/iso8583/length"
+	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
 	"github.com/tomasdemarco/iso8583/utils"
@@ -31,8 +33,12 @@ type Client struct {
 	MatchFields         []string
 	Stan                *utils.Stan
 	Logger              *logger.Logger
-	HeaderPackFunc      func(interface{}) (valueRaw []byte, err error)
-	HeaderUnpackFunc    func(r io.Reader) (value interface{}, length int, err error)
+	LengthPackFunc      length.PackFunc
+	LengthUnpackFunc    length.UnpackFunc
+	HeaderPackFunc      header.PackFunc
+	HeaderUnpackFunc    header.UnpackFunc
+	FooterPackFunc      footer.PackFunc
+	FooterUnpackFunc    footer.UnpackFunc
 }
 
 type HandlerFunc func(*ctx.RequestContext, *Client)
@@ -45,8 +51,6 @@ func New(
 	packager *packager.Packager,
 	matchFields *[]string,
 	logger *logger.Logger,
-	headerPackFunc func(interface{}) (valueRaw []byte, err error),
-	headerUnpackFunc func(r io.Reader) (value interface{}, length int, err error),
 ) *Client {
 	client := Client{
 		Name:                name,
@@ -59,8 +63,12 @@ func New(
 		Stan:                utils.NewStan(),
 		Logger:              logger,
 		OngoingTransactions: NewOngoingTransactions(),
-		HeaderPackFunc:      headerPackFunc,
-		HeaderUnpackFunc:    headerUnpackFunc,
+		LengthPackFunc:      length.Pack,
+		LengthUnpackFunc:    length.Unpack,
+		HeaderPackFunc:      header.Pack,
+		HeaderUnpackFunc:    header.Unpack,
+		FooterPackFunc:      footer.Pack,
+		FooterUnpackFunc:    footer.Unpack,
 	}
 
 	if matchFields != nil {
@@ -129,7 +137,7 @@ func (c *Client) Listen() {
 	}()
 
 	for {
-		length, err := length2.Unpack(c.Reader, c.Packager.Prefix)
+		lengthVal, err := length.Unpack(c.Reader, c.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
 				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
@@ -137,12 +145,12 @@ func (c *Client) Listen() {
 			break
 		}
 
-		if length <= 0 {
+		if lengthVal <= 0 {
 			continue
 		}
 
 		msgRes := message.NewMessage(c.Packager)
-		msgRes.Length = length
+		msgRes.Length = lengthVal
 		_, headerLength, err := c.HeaderUnpackFunc(c.Reader)
 		if err != nil {
 			if err != io.EOF {
@@ -151,9 +159,9 @@ func (c *Client) Listen() {
 			break
 		}
 
-		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", length), c.Name)
+		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), c.Name)
 
-		msgRaw := make([]byte, length-headerLength)
+		msgRaw := make([]byte, lengthVal-headerLength)
 		_, err = c.Reader.Read(msgRaw)
 		if err != nil {
 			if err != io.EOF {
@@ -170,8 +178,8 @@ func (c *Client) Listen() {
 		} else {
 			var messageId string
 			for _, v := range c.MatchFields {
-				value, _ := msgRes.GetField(v)
-				messageId += value
+				fld, _ := msgRes.GetField(v)
+				messageId += fld
 			}
 
 			if c.OngoingTransactions.List[messageId].Message != nil || !c.OngoingTransactions.IsChanClosed(messageId) {
@@ -204,12 +212,13 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 		return err
 	}
 
-	lengthPacked, err := length2.Pack(c.Packager.Prefix, len(messageResponseRaw)+c.Packager.HeaderLength/2+c.Packager.FooterLength)
+	headerRaw, headerLength, err := c.HeaderPackFunc(nil)
+	footerRaw, footerLength, err := c.FooterPackFunc(nil)
+
+	lengthPacked, err := length.Pack(c.Packager.Prefix, len(messageResponseRaw)+headerLength+footerLength)
 	if err != nil {
 		return err
 	}
-
-	headerResponse, err := c.HeaderPackFunc([]byte{0x60, 0x00, 0x00, 0x00, 0x00})
 
 	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw))
 
@@ -221,11 +230,11 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == "000" {
-			value, _ := ctx.Request.GetField(v)
-			messageId += utils.GetMtiResponse(value)
+			fld, _ := ctx.Request.GetField(v)
+			messageId += utils.GetMtiResponse(fld)
 		} else {
-			value, _ := ctx.Request.GetField(v)
-			messageId += value
+			fld, _ := ctx.Request.GetField(v)
+			messageId += fld
 		}
 	}
 
@@ -233,8 +242,9 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 
 	buf := new(bytes.Buffer)
 	buf.Write(lengthPacked)
-	buf.Write(headerResponse)
+	buf.Write(headerRaw)
 	buf.Write(messageResponseRaw)
+	buf.Write(footerRaw)
 
 	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {
@@ -256,20 +266,27 @@ func (c *Client) Wait(reqCtx *ctx.RequestContext) (*message.Message, error) {
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == "000" {
-			value, _ := reqCtx.Request.GetField(v)
-			messageId += utils.GetMtiResponse(value)
+			fld, err := reqCtx.Request.GetField(v)
+			if err != nil {
+				return nil, err
+			}
+			messageId += utils.GetMtiResponse(fld)
 		} else {
-			value, _ := reqCtx.Request.GetField(v)
-			messageId += value
+			fld, err := reqCtx.Request.GetField(v)
+			if err != nil {
+				return nil, err
+			}
+			messageId += fld
 		}
 	}
 
 	defer c.OngoingTransactions.Remove(messageId)
 
 	select {
-	case <-time.After(c.Timeout):
+	case <-time.After(c.Timeout - time.Since(reqCtx.StarTime)):
 		return nil, errors.New(fmt.Sprintf("transaction %s timeout", messageId))
 	case msg := <-c.OngoingTransactions.List[messageId].Message:
+		c.Logger.Info(reqCtx, logger.Message, fmt.Sprintf("elapsed time %.3fms", float64(time.Since(reqCtx.StarTime).Nanoseconds())/1e6), c.Name)
 		c.Logger.Debug(reqCtx, fmt.Sprintf("received a message channel, id: %s", messageId), c.Name)
 		return &msg, nil
 	}

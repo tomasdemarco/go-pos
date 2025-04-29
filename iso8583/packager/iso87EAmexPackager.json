@@ -4,8 +4,6 @@
 		"type": "LLLL",
 		"encoding": "HEX"
 	},
-	"header": null,
-	"headerLength": 0,
 	"fields": {
 		"000": {
 			"type": "NUMERIC",

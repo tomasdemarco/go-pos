@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
+	pkg, err := packager.LoadFromJsonV2("./iso8583/packager", "iso87BPackager.json")
 	//pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87EAmexPackager.json")
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
@@ -27,12 +27,16 @@ func main() {
 	srv := server.New(
 		"server-prueba",
 		port,
-		&pkg,
+		15000,
+		pkg,
 		logger.New(logger.Debug),
 		HandleRequest,
-		HeaderPack,
-		HeaderUnpack,
 	)
+
+	srv.HeaderPackFunc = HeaderPack
+	srv.HeaderUnpackFunc = HeaderUnpack
+	srv.LengthPackFunc = length.Pack
+	srv.LengthUnpackFunc = length.Unpack
 
 	err = srv.Run()
 	if err != nil {
@@ -60,47 +64,18 @@ func main() {
 
 // HandleRequest Handle client request
 func HandleRequest(c *ctx.RequestContext, s *server.Server) {
-	var messageResponse *message.Message
+	var msgRes *message.Message
 
-	mti, err := c.Request.GetField("000")
-	if err == nil && mti == "1804" {
-		messageResponse = PrepareEchoResponse(c.Request)
+	fld, err := c.Request.GetField("000")
+	if err == nil && fld == "1804" {
+		msgRes = PrepareEchoResponse(c.Request)
 	} else {
-		messageResponse = PrepareResponse(c.Request)
+		msgRes = PrepareResponse(c.Request)
 	}
 
-	messageResponseRaw, err := messageResponse.Pack()
+	err = s.SendResponse(c, msgRes)
 	if err != nil {
-		fmt.Printf("%v", err)
-	}
-
-	lengthHexResponse, err := length.Pack(s.Packager.Prefix, len(messageResponseRaw)+s.Packager.HeaderLength)
-	if err != nil {
-		fmt.Printf("%v", err)
-	}
-
-	headerResponse, err := s.HeaderPackFunc([]byte{0x60, 0x00, 0x00, 0x00, 0x00})
-
-	s.Logger.Info(c, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw), s.Name)
-
-	err = s.Logger.ISOMessage(c, messageResponse, s.Name)
-	if err != nil {
-		log.Printf("error %s: %v", s.Name, err)
-	}
-
-	buf := new(bytes.Buffer)
-	buf.Write(lengthHexResponse)
-	buf.Write(headerResponse)
-	buf.Write(messageResponseRaw)
-
-	_, err = c.ClientCtx.Writer.Write(buf.Bytes())
-	if err != nil {
-		log.Printf("error %s: %v", s.Name, err)
-	}
-
-	err = c.ClientCtx.Writer.Flush()
-	if err != nil {
-		log.Printf("error %s: %v", s.Name, err)
+		s.Logger.Error(c, errors.New(fmt.Sprintf("error trying to send response message to the client: %v", err)), s.Name)
 	}
 }
 
@@ -113,17 +88,17 @@ func PrepareResponse(messageRequest *message.Message) *message.Message {
 	//header["03"] = messageRequest.Header["02"]
 	//messageResponse.Header = header
 
-	mti, err := messageRequest.GetField("000")
+	fld, err := messageRequest.GetField("000")
 	if err == nil {
-		messageResponse.SetField("000", GetMtiResponse(mti))
+		messageResponse.SetField("000", GetMtiResponse(fld))
 	}
 
 	for _, value := range messageRequest.Bitmap {
 		if value != "000" && value != "001" {
 
-			fieldAux, err := messageRequest.GetField(value)
+			fld, err := messageRequest.GetField(value)
 			if err == nil {
-				messageResponse.SetField(value, fieldAux)
+				messageResponse.SetField(value, fld)
 			}
 		}
 	}
@@ -145,25 +120,25 @@ func PrepareEchoResponse(message800 *message.Message) *message.Message {
 	message0810 := message.NewMessage(message800.Packager)
 
 	message0810.SetField("000", "1814")
-	fieldAux, err := message800.GetField("003")
+	fld, err := message800.GetField("003")
 	if err == nil {
-		message0810.SetField("003", fieldAux)
+		message0810.SetField("003", fld)
 	}
-	fieldAux, err = message800.GetField("007")
+	fld, err = message800.GetField("007")
 	if err == nil {
-		message0810.SetField("007", fieldAux)
+		message0810.SetField("007", fld)
 	}
-	fieldAux, err = message800.GetField("011")
+	fld, err = message800.GetField("011")
 	if err == nil {
-		message0810.SetField("011", fieldAux)
+		message0810.SetField("011", fld)
 	}
-	fieldAux, err = message800.GetField("012")
+	fld, err = message800.GetField("012")
 	if err == nil {
-		message0810.SetField("012", fieldAux)
+		message0810.SetField("012", fld)
 	}
-	fieldAux, err = message800.GetField("024")
+	fld, err = message800.GetField("024")
 	if err == nil {
-		message0810.SetField("024", fieldAux)
+		message0810.SetField("024", fld)
 	}
 
 	message0810.SetField("039", "800")
@@ -212,6 +187,6 @@ func HeaderUnpack(r io.Reader) (value interface{}, length int, err error) {
 	return fmt.Sprintf("%x", buf), 5, nil
 }
 
-func HeaderPack(interface{}) ([]byte, error) {
-	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, nil
+func HeaderPack(interface{}) ([]byte, int, error) {
+	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, 5, nil
 }

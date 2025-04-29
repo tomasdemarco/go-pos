@@ -7,6 +7,7 @@ import (
 	"github.com/tomasdemarco/go-pos/client"
 	"github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
 	"io"
@@ -46,30 +47,33 @@ func main() {
 		port,
 		20000,
 		&pkg,
-		logger.New(
-			logger.Info,
-			true,
-		),
+		nil,
+		logger.New(logger.Info),
 	)
+
+	cli.LengthPackFunc = length.Pack
+	cli.LengthUnpackFunc = length.Unpack
+	cli.HeaderPackFunc = HeaderPackCli
+	cli.HeaderUnpackFunc = HeaderUnpackCli
 
 	err = cli.Connect()
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	ctx := context.New(cli.Stan)
-
-	msg, err := buildMessageByFile(ctx, *file, &pkg)
+	msg, err := buildMessageByFile(*cli, *file)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	err = cli.Send(ctx, *msg)
+	ctx := context.NewRequestContext(nil, msg)
+
+	err = cli.Send(ctx, msg)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
-	_, err = cli.Wait(ctx, "0227152417000001")
+	_, err = cli.Wait(ctx)
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -80,7 +84,7 @@ func main() {
 	}
 }
 
-func buildMessageByFile(ctx *context.Context, file string, pkg *packager.Packager) (*message.Message, error) {
+func buildMessageByFile(c client.Client, file string) (*message.Message, error) {
 	absPath, err := filepath.Abs(file)
 	if err != nil {
 		return nil, err
@@ -96,7 +100,7 @@ func buildMessageByFile(ctx *context.Context, file string, pkg *packager.Package
 		return nil, err
 	}
 
-	var fields map[string]interface{}
+	var fields map[string]string
 
 	err = json.Unmarshal(byteValue, &fields)
 	if err != nil {
@@ -104,20 +108,20 @@ func buildMessageByFile(ctx *context.Context, file string, pkg *packager.Package
 	}
 	defer jsonFile.Close()
 
-	msg := message.NewMessage(pkg)
+	msg := message.NewMessage(c.Packager)
 
-	header := make(map[string]string)
-	header["01"] = "60"
-	header["02"] = "0001"
-	header["03"] = "0000"
-	msg.Header = header
+	//header := make(map[string]string)
+	//header["01"] = "60"
+	//header["02"] = "0001"
+	//header["03"] = "0000"
+	//msg.Header = header
 
 	now := time.Now()
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	msg.SetField("004", fmt.Sprintf("%012d", random.Intn(99999999-100)+100))
 	msg.SetField("007", now.Format("0102150405"))
-	msg.SetField("011", fmt.Sprintf("%06d", ctx.Stan))
+	msg.SetField("011", fmt.Sprintf("%06d", c.Stan.Next()))
 	msg.SetField("012", now.Format("150405"))
 	msg.SetField("013", now.Format("0102"))
 
@@ -132,4 +136,25 @@ func buildMessageByFile(ctx *context.Context, file string, pkg *packager.Package
 	log.Println(string(jsonData))
 
 	return msg, nil
+}
+
+func HeaderUnpackCli(r io.Reader) (value interface{}, length int, err error) {
+
+	buf := make([]byte, 5)
+	_, err = r.Read(buf)
+	if err != nil {
+		if err != io.EOF {
+			err = fmt.Errorf("reading header: %w", err)
+		}
+
+		return nil, 0, err
+	}
+
+	//	h.Value = fmt.Sprintf("%x", buf)
+
+	return fmt.Sprintf("%x", buf), 5, nil
+}
+
+func HeaderPackCli(interface{}) ([]byte, int, error) {
+	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, 5, nil
 }

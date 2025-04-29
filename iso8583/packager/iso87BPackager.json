@@ -2,11 +2,8 @@
 	"description": "iso87BPackager",
 	"prefix": {
 		"type": "LLLL",
-		"encoding": "HEX"
+		"encoding": "BINARY"
 	},
-	"headerLength": 10,
-	"header": null,
-	"headerFile": "headerTpdu.json",
 	"fields": {
 		"000": {
 			"description": "Message Type Indicator",
@@ -409,7 +406,28 @@
 				"encoding": "BCD"
 			},
 			"padding": null,
-			"subFieldsData": null
+			"subFieldsData": {
+				"subfields": {
+					"01": {
+						"name": "Batch Number",
+						"type": "STRING",
+						"length": 3,
+						"pattern": "^{3}$",
+						"encoding": "NONE",
+						"prefix": null,
+						"padding": null
+					},
+					"02": {
+						"name": "Ticket Number",
+						"type": "STRING",
+						"length": 4,
+						"pattern": "^{4}$",
+						"encoding": "NONE",
+						"prefix": null,
+						"padding": null
+					}
+				}
+			}
 		},
 		"063": {
 			"description": "Reserved (Private)",

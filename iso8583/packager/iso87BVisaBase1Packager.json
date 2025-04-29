@@ -1,10 +1,9 @@
 {
-	"name": "ISO87BVisaBase1Packager",
-	"prefixLength": 8,
-	"prefixEncoding": "HEX",
-	"headerLength": 44,
-	"header": null,
-	"headerFile": "headerVisaBase1.json",
+	"name": "iso87BVisaBase1Packager",
+	"prefix": {
+		"type": "LLLL",
+		"encoding": "HEX"
+	},
 	"fields": {
 		"000": {
 			"type": "STRING",

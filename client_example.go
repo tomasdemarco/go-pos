@@ -5,6 +5,7 @@ import (
 	"github.com/tomasdemarco/go-pos/client"
 	reqCtx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
 	"io"
@@ -14,27 +15,30 @@ import (
 )
 
 func main() {
-	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
+	pkg, err := packager.LoadFromJsonV2("./iso8583/packager", "iso87BPackager.json")
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
 
-	host := "127.0.0.1"
-	port := 8015
-	//host := "10.72.0.22"
+	//host := "127.0.0.1"
 	//port := 8015
+	host := "10.72.0.22"
+	port := 8015
 
 	cli := client.New(
 		"client-prueba",
 		host,
 		port,
-		20000,
-		&pkg,
+		30000,
+		pkg,
 		&[]string{"007", "011"},
 		logger.New(logger.Debug),
-		HeaderPackC,
-		HeaderUnpackC,
 	)
+
+	cli.LengthPackFunc = length.Pack
+	cli.LengthUnpackFunc = length.Unpack
+	cli.HeaderPackFunc = HeaderPackC
+	cli.HeaderUnpackFunc = HeaderUnpackC
 
 	err = cli.Connect()
 	if err != nil {
@@ -42,7 +46,7 @@ func main() {
 	}
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		wg.Add(1)
 
 		msg := assembleMessage(*cli)
@@ -78,6 +82,7 @@ func main() {
 }
 
 func assembleMessage(c client.Client) *message.Message {
+
 	msg := message.NewMessage(c.Packager)
 
 	//header := make(map[string]string)
@@ -87,28 +92,32 @@ func assembleMessage(c client.Client) *message.Message {
 	//msg.Header = header
 
 	msg.SetField("000", "0200")
-	//msg.SetField("002", "4123220000000222")
+	msg.SetField("002", "4761730000000144")
 	msg.SetField("003", "000000")
-	msg.SetField("004", "000000017078")
+	msg.SetField("004", "17078")
 	msg.SetField("007", "0227152417")
 	msg.SetField("011", fmt.Sprintf("%06d", c.Stan.Next()))
 	msg.SetField("012", "152417")
 	msg.SetField("013", "0227")
 	msg.SetField("014", "3112")
-	msg.SetField("022", "900")
+	msg.SetField("022", "051")
+	msg.SetField("023", "001")
 	msg.SetField("024", "012")
 	msg.SetField("025", "00")
-	msg.SetField("035", "4761730000000144D311220118473411")
+	msg.SetField("035", "4761730000000144=311220118473411")
 	msg.SetField("041", "1")
-	msg.SetField("042", "1501")
+	msg.SetField("042", "1101")
 	msg.SetField("048", "001")
 	msg.SetField("049", "032")
-	//msg.SetField("055", "123")
+	msg.SetField("055", "9F2608A34B9543C74723EE9F2701809F101706011203A000000F00564953414C3354455354434153459F3704A86CC8E39F36020001950580800080009A032306279C01009F02060000000110005F2A020032820218009F1A0200329F34031E03009F3303E0F8C88407A00000000320109F03060000000000009F350122")
 	//de59 := toISO88591("")
 	//msg.SetField("059", "02100010010707")
-	msg.SetField("059", "02100010010701029000100107910680008008097C1049AAK0010987009166GP *GPcom014167San Martin 50500416873720041697128004173CABA001174C")
+	msg.SetField("059", "021000100107070680008008097C1049AAK0010988020166YAG*GP Abarrotes Jes018167Avda Caseros, 286200416854110041694280009173Balvanera0011741")
 	msg.SetField("060", "GP")
-	msg.SetField("062", "0011234")
+	//de62 := make(subfield.Subfields)
+	//de62["01"] = "001"
+	//de62["02"] = "0003"
+	msg.SetField("062", "0010003")
 
 	return msg
 }
@@ -159,6 +168,6 @@ func HeaderUnpackC(r io.Reader) (value interface{}, length int, err error) {
 	return fmt.Sprintf("%x", buf), 5, nil
 }
 
-func HeaderPackC(interface{}) ([]byte, error) {
-	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, nil
+func HeaderPackC(interface{}) ([]byte, int, error) {
+	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, 5, nil
 }

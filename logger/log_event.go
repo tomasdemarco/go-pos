@@ -19,17 +19,24 @@ func (l *Logger) ISOMessage(c *ctx.RequestContext, message *message.Message, ser
 			return err
 		}
 
-		fields := make(map[string]string)
+		fields := make(map[string]interface{})
 		fields["000"] = mti
 
-		for _, field := range message.Bitmap {
-			if field != "000" && field != "001" {
-				value, err := message.GetField(field)
+		for _, fldId := range message.Bitmap {
+			if fldId != "000" && fldId != "001" {
+				fld, err := message.GetField(fldId)
 				if err != nil {
 					return err
 				}
 
-				fields[field] = value
+				//if fld.Subfields != nil {
+				//	val, err := message.GetSubfields(fldId)
+				//	if err != nil {
+				//	}
+				//	fields[fldId] = val
+				//} else {
+				//}
+				fields[fldId] = fld
 			}
 		}
 
