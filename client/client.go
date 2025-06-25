@@ -170,13 +170,15 @@ func (c *Client) Listen() {
 
 		msgRes := message.NewMessage(c.Packager)
 		msgRes.Length = lengthVal
-		_, headerLength, err := c.HeaderUnpackFunc(c.Reader)
+		headerVal, headerLength, err := c.HeaderUnpackFunc(c.Reader)
 		if err != nil {
 			if err != io.EOF {
 				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
+
+		msgRes.Header = headerVal
 
 		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), c.Name)
 
@@ -231,8 +233,8 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 		return err
 	}
 
-	headerRaw, headerLength, err := c.HeaderPackFunc(nil)
-	footerRaw, footerLength, err := c.FooterPackFunc(nil)
+	headerRaw, headerLength, err := c.HeaderPackFunc(msg.Header)
+	footerRaw, footerLength, err := c.FooterPackFunc(msg.Footer)
 
 	lengthPacked, err := length.Pack(c.Packager.Prefix, len(messageResponseRaw)+headerLength+footerLength)
 	if err != nil {

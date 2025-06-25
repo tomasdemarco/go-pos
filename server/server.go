@@ -155,13 +155,15 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		msgReq := message.NewMessage(s.Packager)
 
 		msgReq.Length = lengthVal
-		_, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
+		headerVal, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
 		if err != nil {
 			if err != io.EOF {
 				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			}
 			break
 		}
+
+		msgReq.Header = headerVal
 
 		msgRaw := make([]byte, lengthVal-headerLength)
 		_, err = clientCtx.Reader.Read(msgRaw)
@@ -198,8 +200,8 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 		return err
 	}
 
-	headerRaw, headerLength, err := s.HeaderPackFunc(nil)
-	footerRaw, footerLength, err := s.FooterPackFunc(nil)
+	headerRaw, headerLength, err := s.HeaderPackFunc(msg.Header)
+	footerRaw, footerLength, err := s.FooterPackFunc(msg.Footer)
 
 	lengthPacked, err := length.Pack(s.Packager.Prefix, len(msgRaw)+headerLength+footerLength)
 	if err != nil {
