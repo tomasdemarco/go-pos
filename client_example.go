@@ -30,6 +30,7 @@ func main() {
 		host,
 		port,
 		30000,
+		true,
 		pkg,
 		&[]string{"007", "011"},
 		logger.New(logger.Debug),
@@ -46,7 +47,7 @@ func main() {
 	}
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 10; i++ {
 		wg.Add(1)
 
 		msg := assembleMessage(*cli)

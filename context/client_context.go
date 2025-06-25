@@ -8,12 +8,13 @@ import (
 )
 
 type ClientContext struct {
-	Id       uuid.UUID
-	Conn     net.Conn
-	Reader   *bufio.Reader
-	Writer   *bufio.Writer
-	StarTime time.Time
-	EndTime  time.Time
+	Id         uuid.UUID
+	Conn       net.Conn
+	Reader     *bufio.Reader
+	Writer     *bufio.Writer
+	RemoteAddr string
+	StarTime   time.Time
+	EndTime    time.Time
 }
 
 func NewClientContext(conn net.Conn) *ClientContext {

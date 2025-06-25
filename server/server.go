@@ -132,11 +132,11 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 	//Cierra la conexion con el cliente al retornar
 	defer func() {
-		s.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", clientCtx.Conn.RemoteAddr().String()), s.Name)
+		s.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", clientCtx.RemoteAddr), s.Name)
 		err := clientCtx.Conn.Close()
 		<-s.sem
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			return
 		}
 	}()
@@ -145,7 +145,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		lengthVal, err := s.LengthUnpackFunc(clientCtx.Reader, s.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			}
 			break
 		}
@@ -158,7 +158,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		_, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			}
 			break
 		}
@@ -167,7 +167,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		_, err = clientCtx.Reader.Read(msgRaw)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			}
 			break
 		}
@@ -176,7 +176,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		err = msgReq.Unpack(msgRaw)
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.Conn.RemoteAddr().String(), err)), s.Name)
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.Conn.RemoteAddr, err)), s.Name)
 		} else {
 			c := ctx.NewRequestContext(clientCtx, msgReq)
 

@@ -25,9 +25,11 @@ type Client struct {
 	Host                string
 	Port                int
 	Timeout             time.Duration
+	AutoReconnect       bool
 	Conn                *net.TCPConn
 	Reader              *bufio.Reader
 	Writer              *bufio.Writer
+	RemoteAddr          string
 	OngoingTransactions *OngoingTransactions
 	Packager            *packager.Packager
 	MatchFields         []string
@@ -48,6 +50,7 @@ func New(
 	host string,
 	port int,
 	timeout int,
+	autoReconnect bool,
 	packager *packager.Packager,
 	matchFields *[]string,
 	logger *logger.Logger,
@@ -58,6 +61,7 @@ func New(
 		Host:                host,
 		Port:                port,
 		Timeout:             time.Duration(timeout) * time.Millisecond,
+		AutoReconnect:       autoReconnect,
 		Packager:            packager,
 		MatchFields:         []string{"000", "007", "011"},
 		Stan:                utils.NewStan(),
@@ -94,10 +98,22 @@ func (c *Client) Connect() error {
 
 	c.Reader = bufio.NewReader(c.Conn)
 	c.Writer = bufio.NewWriter(c.Conn)
+	c.RemoteAddr = c.Conn.RemoteAddr().String()
 
 	c.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", tcpAddr.String()), c.Name)
 
-	go c.Listen()
+	go func() {
+		c.Listen()
+
+		if c.AutoReconnect {
+			err = c.Connect()
+
+			for err != nil {
+				time.Sleep(time.Second * 1)
+				err = c.Connect()
+			}
+		}
+	}()
 
 	return nil
 }
@@ -105,12 +121,15 @@ func (c *Client) Connect() error {
 // Disconnect connection to the server
 func (c *Client) Disconnect() error {
 
-	err := c.Conn.Close()
-	if err != nil {
-		return err
-	}
+	if c.Conn != nil {
 
-	c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()), c.Name)
+		err := c.Conn.Close()
+		if err != nil {
+			return err
+		}
+
+		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.RemoteAddr), c.Name)
+	}
 
 	return nil
 }
@@ -133,14 +152,14 @@ func (c *Client) Listen() {
 			return
 		}
 
-		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()), c.Name)
+		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.RemoteAddr), c.Name)
 	}()
 
 	for {
 		lengthVal, err := length.Unpack(c.Reader, c.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
@@ -154,7 +173,7 @@ func (c *Client) Listen() {
 		_, headerLength, err := c.HeaderUnpackFunc(c.Reader)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
@@ -165,7 +184,7 @@ func (c *Client) Listen() {
 		_, err = c.Reader.Read(msgRaw)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
@@ -174,7 +193,7 @@ func (c *Client) Listen() {
 
 		err = msgRes.Unpack(msgRaw)
 		if err != nil {
-			c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.Conn.RemoteAddr().String(), err)), c.Name)
+			c.Logger.Error(nil, errors.New(fmt.Sprintf("error server %s: %v", c.RemoteAddr, err)), c.Name)
 		} else {
 			var messageId string
 			for _, v := range c.MatchFields {
@@ -225,6 +244,7 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	err = c.Logger.ISOMessage(ctx, msg, c.Name)
 	if err != nil {
 		c.Logger.Error(ctx, err, c.Name)
+		return err
 	}
 
 	var messageId string
@@ -248,17 +268,34 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 
 	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {
-		c.Logger.Error(ctx, err, c.Conn.RemoteAddr().String())
+		c.Logger.Error(ctx, err, c.RemoteAddr)
+	} else {
+		err = c.Writer.Flush()
+		if err != nil {
+			c.Logger.Error(ctx, err, c.RemoteAddr)
+		}
 	}
 
-	err = c.Writer.Flush()
-	if err != nil {
-		c.Logger.Error(ctx, err, c.Conn.RemoteAddr().String())
+	for err != nil && time.Since(ctx.StarTime) < c.Timeout {
+		time.Sleep(time.Second * 1)
+
+		_, err = c.Writer.Write(buf.Bytes())
+		if err != nil {
+			c.Logger.Error(ctx, err, c.RemoteAddr)
+		} else {
+			err = c.Writer.Flush()
+			if err != nil {
+				c.Logger.Error(ctx, err, c.RemoteAddr)
+			}
+		}
 	}
 
-	c.Logger.Debug(nil, fmt.Sprintf("sent a message: %x", buf.Bytes()), c.Name)
+	if err == nil {
+		c.Logger.Debug(nil, fmt.Sprintf("sent a message: %x", buf.Bytes()), c.Name)
+		return nil
+	}
 
-	return nil
+	return err
 }
 
 // Wait for server response
