@@ -170,7 +170,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		msgReq.Header = headerVal
 
 		msgRaw := make([]byte, lengthVal-headerLength)
-		_, err = clientCtx.Reader.Read(msgRaw)
+		_, err = io.ReadFull(clientCtx.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
 				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)

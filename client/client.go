@@ -183,7 +183,7 @@ func (c *Client) Listen() {
 		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), c.Name)
 
 		msgRaw := make([]byte, lengthVal-headerLength)
-		_, err = c.Reader.Read(msgRaw)
+		_, err = io.ReadFull(c.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
 				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
