@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
-	"github.com/tomasdemarco/go-pos/footer"
 	"github.com/tomasdemarco/go-pos/header"
 	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/go-pos/trailer"
 	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
@@ -39,8 +39,8 @@ type Client struct {
 	LengthUnpackFunc    length.UnpackFunc
 	HeaderPackFunc      header.PackFunc
 	HeaderUnpackFunc    header.UnpackFunc
-	FooterPackFunc      footer.PackFunc
-	FooterUnpackFunc    footer.UnpackFunc
+	TrailerPackFunc     trailer.PackFunc
+	TrailerUnpackFunc   trailer.UnpackFunc
 }
 
 type HandlerFunc func(*ctx.RequestContext, *Client)
@@ -71,8 +71,8 @@ func New(
 		LengthUnpackFunc:    length.Unpack,
 		HeaderPackFunc:      header.Pack,
 		HeaderUnpackFunc:    header.Unpack,
-		FooterPackFunc:      footer.Pack,
-		FooterUnpackFunc:    footer.Unpack,
+		TrailerPackFunc:     trailer.Pack,
+		TrailerUnpackFunc:   trailer.Unpack,
 	}
 
 	if matchFields != nil {
@@ -234,9 +234,9 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	}
 
 	headerRaw, headerLength, err := c.HeaderPackFunc(msg.Header)
-	footerRaw, footerLength, err := c.FooterPackFunc(msg.Footer)
+	trailerRaw, trailerLength, err := c.TrailerPackFunc(msg.Trailer)
 
-	lengthPacked, err := length.Pack(c.Packager.Prefix, len(messageResponseRaw)+headerLength+footerLength)
+	lengthPacked, err := length.Pack(c.Packager.Prefix, len(messageResponseRaw)+headerLength+trailerLength)
 	if err != nil {
 		return err
 	}
@@ -266,7 +266,7 @@ func (c *Client) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	buf.Write(lengthPacked)
 	buf.Write(headerRaw)
 	buf.Write(messageResponseRaw)
-	buf.Write(footerRaw)
+	buf.Write(trailerRaw)
 
 	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {

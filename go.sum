@@ -6,3 +6,5 @@ github.com/tomasdemarco/iso8583 v1.7.1 h1:SRbuUN0OM80X6K595MEhnMBTiAWI1tW+mnUkPI
 github.com/tomasdemarco/iso8583 v1.7.1/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=
 github.com/tomasdemarco/iso8583 v1.7.2 h1:dwffEJNnzoV/3ft2K9uxI5m0g4ta9++GU8z8q61dl+Q=
 github.com/tomasdemarco/iso8583 v1.7.2/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=
+github.com/tomasdemarco/iso8583 v1.7.3 h1:7krDYfnFpRAEV0l4+kjxYTpyXmzKsOwuOefR+A1Mdmw=
+github.com/tomasdemarco/iso8583 v1.7.3/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=
