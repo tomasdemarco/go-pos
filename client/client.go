@@ -181,6 +181,8 @@ func (c *Client) Listen() {
 			return
 		}
 
+		c.Logger.Debug(nil, fmt.Sprintf("received message length: %d", lengthVal), c.Name)
+
 		msgRes := message.NewMessage(c.Packager)
 		msgRes.Length = lengthVal
 		headerVal, headerLength, err := c.HeaderUnpackFunc(c.Reader)
@@ -193,10 +195,15 @@ func (c *Client) Listen() {
 
 		msgRes.Header = headerVal
 
-		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), c.Name)
+		if msgRes.Header != nil {
+			if _, ok := msgRes.Header.([]byte); ok {
+				c.Logger.Debug(nil, fmt.Sprintf("received message header: %x", msgRes.Header.([]byte)), c.Name)
+			} else {
+				c.Logger.Debug(nil, fmt.Sprintf("received message header: %v", msgRes.Header), c.Name)
+			}
+		}
 
 		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readMessageTimeout))
-
 		msgRaw := make([]byte, lengthVal-headerLength)
 		_, err = io.ReadFull(c.Reader, msgRaw)
 		if err != nil {
@@ -204,6 +211,26 @@ func (c *Client) Listen() {
 				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
+		}
+
+		trailerVal, trailerLength, err := c.TrailerUnpackFunc(msgRaw)
+		if err != nil {
+			if err != io.EOF {
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
+			}
+			break
+		}
+
+		msgRaw = msgRaw[:len(msgRaw)-trailerLength]
+
+		msgRes.Trailer = trailerVal
+
+		if msgRes.Trailer != nil {
+			if _, ok := msgRes.Trailer.([]byte); ok {
+				c.Logger.Debug(nil, fmt.Sprintf("received message trailer: %x", msgRes.Trailer.([]byte)), c.Name)
+			} else {
+				c.Logger.Debug(nil, fmt.Sprintf("received message trailer: %v", msgRes.Trailer), c.Name)
+			}
 		}
 
 		c.Logger.Debug(nil, fmt.Sprintf("received a message: %x", msgRaw), c.Name)

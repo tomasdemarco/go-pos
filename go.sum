@@ -1,4 +1,4 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/tomasdemarco/iso8583 v1.7.6 h1:ypRMU2efwUlIL61eB+HmUdy+rT+0uuYYtAgIq5xRJSk=
-github.com/tomasdemarco/iso8583 v1.7.6/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=
+github.com/tomasdemarco/iso8583 v1.7.7 h1:xV1QKFQpvWVQgzJ3sqEtaGn7dHytHQ8J5t8+n/vBxyk=
+github.com/tomasdemarco/iso8583 v1.7.7/go.mod h1:BTW1dKoTgsDiTc2EhqbRivIwYwdJKtrCdsfjg6Vc12M=

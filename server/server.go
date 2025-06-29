@@ -170,7 +170,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 			return
 		}
 
-		s.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), s.Name)
+		s.Logger.Debug(nil, fmt.Sprintf("received message length: %d", lengthVal), s.Name)
 
 		msgReq := message.NewMessage(s.Packager)
 
@@ -184,6 +184,14 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		}
 
 		msgReq.Header = headerVal
+
+		if msgReq.Header != nil {
+			if _, ok := msgReq.Header.([]byte); ok {
+				s.Logger.Debug(nil, fmt.Sprintf("received message header: %x", msgReq.Header.([]byte)), s.Name)
+			} else {
+				s.Logger.Debug(nil, fmt.Sprintf("received message header: %v", msgReq.Header), s.Name)
+			}
+		}
 
 		_ = clientCtx.Conn.SetReadDeadline(time.Now().Add(s.ReadMessageTimeout))
 		msgRaw := make([]byte, lengthVal-headerLength)
@@ -203,8 +211,17 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 			break
 		}
 
-		msgReq.Trailer = trailerVal
 		msgRaw = msgRaw[:len(msgRaw)-trailerLength]
+
+		msgReq.Trailer = trailerVal
+
+		if msgReq.Trailer != nil {
+			if _, ok := msgReq.Trailer.([]byte); ok {
+				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)), s.Name)
+			} else {
+				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %v", msgReq.Trailer), s.Name)
+			}
+		}
 
 		s.Logger.Debug(nil, fmt.Sprintf("received a message: %x", msgRaw), s.Name)
 
