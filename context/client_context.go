@@ -19,10 +19,11 @@ type ClientContext struct {
 
 func NewClientContext(conn net.Conn) *ClientContext {
 	return &ClientContext{
-		Id:       uuid.New(),
-		StarTime: time.Now(),
-		Conn:     conn,
-		Reader:   bufio.NewReader(conn),
-		Writer:   bufio.NewWriter(conn),
+		Id:         uuid.New(),
+		StarTime:   time.Now(),
+		Conn:       conn,
+		Reader:     bufio.NewReader(conn),
+		Writer:     bufio.NewWriter(conn),
+		RemoteAddr: conn.RemoteAddr().String(),
 	}
 }

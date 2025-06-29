@@ -41,6 +41,10 @@ type Client struct {
 	HeaderUnpackFunc    header.UnpackFunc
 	TrailerPackFunc     trailer.PackFunc
 	TrailerUnpackFunc   trailer.UnpackFunc
+
+	readServerTimeout  time.Duration
+	readMessageTimeout time.Duration
+	maxMessageSize     int
 }
 
 type HandlerFunc func(*ctx.RequestContext, *Client)
@@ -73,6 +77,9 @@ func New(
 		HeaderUnpackFunc:    header.Unpack,
 		TrailerPackFunc:     trailer.Pack,
 		TrailerUnpackFunc:   trailer.Unpack,
+		readServerTimeout:   5 * time.Minute,
+		readMessageTimeout:  5 * time.Second,
+		maxMessageSize:      4096,
 	}
 
 	if matchFields != nil {
@@ -139,8 +146,8 @@ func (c *Client) Listen() {
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error server-%s: err %v", c.Name, err)))
-				c.Logger.Panic(nil, errors.New(fmt.Sprintf("error server-%s: err %v", c.Name, err)), debug.Stack())
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error %s: err %v", c.Name, err)))
+				c.Logger.Panic(nil, errors.New(fmt.Sprintf("error %s: err %v", c.Name, err)), debug.Stack())
 			}
 		}
 	}()
@@ -156,16 +163,22 @@ func (c *Client) Listen() {
 	}()
 
 	for {
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readServerTimeout))
 		lengthVal, err := length.Unpack(c.Reader, c.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
 
-		if lengthVal <= 0 {
+		if lengthVal == 0 {
 			continue
+		}
+
+		if lengthVal > c.maxMessageSize {
+			c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: invalid length (%d), longer than allowed", c.RemoteAddr, lengthVal)), c.Name)
+			return
 		}
 
 		msgRes := message.NewMessage(c.Packager)
@@ -173,7 +186,7 @@ func (c *Client) Listen() {
 		headerVal, headerLength, err := c.HeaderUnpackFunc(c.Reader)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}
@@ -182,11 +195,13 @@ func (c *Client) Listen() {
 
 		c.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), c.Name)
 
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readMessageTimeout))
+
 		msgRaw := make([]byte, lengthVal-headerLength)
 		_, err = io.ReadFull(c.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
-				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", c.RemoteAddr, err)), c.Name)
+				c.Logger.Error(nil, errors.New(fmt.Sprintf("error read server %s: %v", c.RemoteAddr, err)), c.Name)
 			}
 			break
 		}

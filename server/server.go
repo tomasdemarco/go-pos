@@ -22,7 +22,6 @@ type Server struct {
 	Name              string
 	Network           string
 	Port              int
-	Timeout           time.Duration
 	Packager          *packager.Packager
 	Stan              *utils.Stan
 	Logger            *logger.Logger
@@ -34,8 +33,11 @@ type Server struct {
 	TrailerPackFunc   trailer.PackFunc
 	TrailerUnpackFunc trailer.UnpackFunc
 
-	maxClients int
-	sem        chan struct{}
+	maxClients         int
+	sem                chan struct{}
+	ReadClientTimeout  time.Duration
+	ReadMessageTimeout time.Duration
+	MaxMessageSize     int
 }
 
 type HandlerFunc func(*ctx.RequestContext, *Server)
@@ -43,28 +45,30 @@ type HandlerFunc func(*ctx.RequestContext, *Server)
 func New(
 	name string,
 	port int,
-	timeout int,
 	packager *packager.Packager,
 	logger *logger.Logger,
 	handlerFunc HandlerFunc,
+	maxClients int,
 ) *Server {
 
 	server := Server{
-		Name:              name,
-		Network:           "tcp",
-		Port:              port,
-		Timeout:           time.Duration(timeout) * time.Millisecond,
-		Packager:          packager,
-		Stan:              utils.NewStan(),
-		Logger:            logger,
-		LengthPackFunc:    length.Pack,
-		LengthUnpackFunc:  length.Unpack,
-		HeaderPackFunc:    header.Pack,
-		HeaderUnpackFunc:  header.Unpack,
-		TrailerPackFunc:   trailer.Pack,
-		TrailerUnpackFunc: trailer.Unpack,
-		maxClients:        10,
-		sem:               make(chan struct{}, 10),
+		Name:               name,
+		Network:            "tcp",
+		Port:               port,
+		Packager:           packager,
+		Stan:               utils.NewStan(),
+		Logger:             logger,
+		LengthPackFunc:     length.Pack,
+		LengthUnpackFunc:   length.Unpack,
+		HeaderPackFunc:     header.Pack,
+		HeaderUnpackFunc:   header.Unpack,
+		TrailerPackFunc:    trailer.Pack,
+		TrailerUnpackFunc:  trailer.Unpack,
+		maxClients:         maxClients,
+		sem:                make(chan struct{}, maxClients),
+		ReadClientTimeout:  5 * time.Minute,
+		ReadMessageTimeout: 5 * time.Second,
+		MaxMessageSize:     4096,
 	}
 
 	server.HandlerFunc = func(c *ctx.RequestContext) {
@@ -89,7 +93,10 @@ func (s *Server) Run() error {
 
 	//Cierra las conexiones
 	defer func() {
-		listener.Close()
+		err = listener.Close()
+		if err != nil {
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error finish listen on port%d: %v", s.Port, err)), s.Name)
+		}
 		s.Logger.Info(nil, logger.Message, fmt.Sprintf("finish listen on port %d", s.Port), s.Name)
 	}()
 
@@ -101,19 +108,22 @@ func (s *Server) listenClient(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s. server-%s", conn.RemoteAddr().String(), s.Name))
+			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s. %s", conn.RemoteAddr().String(), s.Name))
 			s.Logger.Error(nil, errors.New(fmt.Sprintf("err accept: %v", err)), s.Name)
 		} else {
-			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", conn.RemoteAddr().String()), s.Name)
-			s.Logger.Info(nil, logger.Message, fmt.Sprintf("accept local port %s / remote host %s", conn.LocalAddr().String(), conn.RemoteAddr().String()), s.Name)
-
 			select {
 			case s.sem <- struct{}{}: // Intenta adquirir el semáforo
+				s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", conn.RemoteAddr().String()), s.Name)
+				s.Logger.Info(nil, logger.Message, fmt.Sprintf("accept local port %s / remote host %s", conn.LocalAddr().String(), conn.RemoteAddr().String()), s.Name)
+
 				clientCtx := ctx.NewClientContext(conn)
 				go s.handleClient(clientCtx)
 			default:
-				fmt.Println("Límite de conexiones alcanzado, rechazando:", conn.RemoteAddr())
-				conn.Close() // Rechazar la conexión
+				s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection limit reached, rejecting: %s", conn.LocalAddr().String()))
+				err = conn.Close()
+				if err != nil {
+					s.Logger.Error(nil, errors.New(fmt.Sprintf("error disconnection client: %v", err)), s.Name)
+				}
 			}
 		}
 	}
@@ -136,12 +146,13 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		err := clientCtx.Conn.Close()
 		<-s.sem
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error disconnection client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			return
 		}
 	}()
 
 	for {
+		_ = clientCtx.Conn.SetReadDeadline(time.Now().Add(s.ReadClientTimeout))
 		lengthVal, err := s.LengthUnpackFunc(clientCtx.Reader, s.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
@@ -152,6 +163,11 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		if lengthVal == 0 {
 			continue
+		}
+
+		if lengthVal > s.MaxMessageSize {
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: invalid length (%d), longer than allowed", clientCtx.RemoteAddr, lengthVal)), s.Name)
+			return
 		}
 
 		s.Logger.Debug(nil, fmt.Sprintf("received a length message: %d", lengthVal), s.Name)
@@ -169,6 +185,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		msgReq.Header = headerVal
 
+		_ = clientCtx.Conn.SetReadDeadline(time.Now().Add(s.ReadMessageTimeout))
 		msgRaw := make([]byte, lengthVal-headerLength)
 		_, err = io.ReadFull(clientCtx.Reader, msgRaw)
 		if err != nil {
@@ -193,7 +210,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		err = msgReq.Unpack(msgRaw)
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.Conn.RemoteAddr, err)), s.Name)
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 		} else {
 			c := ctx.NewRequestContext(clientCtx, msgReq)
 
