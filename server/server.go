@@ -252,7 +252,7 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 	headerRaw, headerLength, err := s.HeaderPackFunc(msg.Header)
 	trailerRaw, trailerLength, err := s.TrailerPackFunc(msg.Trailer)
 
-	lengthPacked, err := length.Pack(s.Packager.Prefix, len(msgRaw)+headerLength+trailerLength)
+	lengthPacked, err := s.LengthPackFunc(s.Packager.Prefix, len(msgRaw)+headerLength+trailerLength)
 	if err != nil {
 		return err
 	}
