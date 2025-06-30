@@ -19,19 +19,20 @@ import (
 )
 
 type Server struct {
-	Name              string
-	Network           string
-	Port              int
-	Packager          *packager.Packager
-	Stan              *utils.Stan
-	Logger            *logger.Logger
-	HandlerFunc       func(c *ctx.RequestContext)
-	LengthPackFunc    length.PackFunc
-	LengthUnpackFunc  length.UnpackFunc
-	HeaderPackFunc    header.PackFunc
-	HeaderUnpackFunc  header.UnpackFunc
-	TrailerPackFunc   trailer.PackFunc
-	TrailerUnpackFunc trailer.UnpackFunc
+	Name                 string
+	Network              string
+	Port                 int
+	Packager             *packager.Packager
+	Stan                 *utils.Stan
+	Logger               *logger.Logger
+	HandlerFunc          func(c *ctx.RequestContext)
+	LengthPackFunc       length.PackFunc
+	LengthUnpackFunc     length.UnpackFunc
+	HeaderPackFunc       header.PackFunc
+	HeaderUnpackFunc     header.UnpackFunc
+	TrailerPackFunc      trailer.PackFunc
+	TrailerUnpackFunc    trailer.UnpackFunc
+	TrailerGetLengthFunc trailer.GetLengthFunc
 
 	maxClients         int
 	sem                chan struct{}
@@ -52,23 +53,24 @@ func New(
 ) *Server {
 
 	server := Server{
-		Name:               name,
-		Network:            "tcp",
-		Port:               port,
-		Packager:           packager,
-		Stan:               utils.NewStan(),
-		Logger:             logger,
-		LengthPackFunc:     length.Pack,
-		LengthUnpackFunc:   length.Unpack,
-		HeaderPackFunc:     header.Pack,
-		HeaderUnpackFunc:   header.Unpack,
-		TrailerPackFunc:    trailer.Pack,
-		TrailerUnpackFunc:  trailer.Unpack,
-		maxClients:         maxClients,
-		sem:                make(chan struct{}, maxClients),
-		ReadClientTimeout:  5 * time.Minute,
-		ReadMessageTimeout: 5 * time.Second,
-		MaxMessageSize:     4096,
+		Name:                 name,
+		Network:              "tcp",
+		Port:                 port,
+		Packager:             packager,
+		Stan:                 utils.NewStan(),
+		Logger:               logger,
+		LengthPackFunc:       length.Pack,
+		LengthUnpackFunc:     length.Unpack,
+		HeaderPackFunc:       header.Pack,
+		HeaderUnpackFunc:     header.Unpack,
+		TrailerPackFunc:      trailer.Pack,
+		TrailerUnpackFunc:    trailer.Unpack,
+		TrailerGetLengthFunc: trailer.GetLength,
+		maxClients:           maxClients,
+		sem:                  make(chan struct{}, maxClients),
+		ReadClientTimeout:    5 * time.Minute,
+		ReadMessageTimeout:   5 * time.Second,
+		MaxMessageSize:       4096,
 	}
 
 	server.HandlerFunc = func(c *ctx.RequestContext) {
@@ -194,33 +196,13 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		}
 
 		_ = clientCtx.Conn.SetReadDeadline(time.Now().Add(s.ReadMessageTimeout))
-		msgRaw := make([]byte, lengthVal-headerLength)
+		msgRaw := make([]byte, lengthVal-headerLength-s.TrailerGetLengthFunc())
 		_, err = io.ReadFull(clientCtx.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
 				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
 			}
 			break
-		}
-
-		trailerVal, trailerLength, err := s.TrailerUnpackFunc(msgRaw)
-		if err != nil {
-			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
-			}
-			break
-		}
-
-		msgRaw = msgRaw[:len(msgRaw)-trailerLength]
-
-		msgReq.Trailer = trailerVal
-
-		if msgReq.Trailer != nil {
-			if _, ok := msgReq.Trailer.([]byte); ok {
-				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)), s.Name)
-			} else {
-				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %v", msgReq.Trailer), s.Name)
-			}
 		}
 
 		s.Logger.Debug(nil, fmt.Sprintf("received a message: %x", msgRaw), s.Name)
@@ -238,6 +220,24 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 			}
 
 			go s.HandlerFunc(c)
+		}
+
+		trailerVal, _, err := s.TrailerUnpackFunc(clientCtx.Reader)
+		if err != nil {
+			if err != io.EOF {
+				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+			}
+			break
+		}
+
+		msgReq.Trailer = trailerVal
+
+		if msgReq.Trailer != nil {
+			if _, ok := msgReq.Trailer.([]byte); ok {
+				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)), s.Name)
+			} else {
+				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %v", msgReq.Trailer), s.Name)
+			}
 		}
 	}
 }
