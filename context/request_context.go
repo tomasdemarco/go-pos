@@ -16,10 +16,25 @@ type RequestContext struct {
 }
 
 func NewRequestContext(clientCtx *ClientContext, msgReq *message.Message) *RequestContext {
-	return &RequestContext{
-		Id:        uuid.New(),
+	c := RequestContext{
 		ClientCtx: clientCtx,
 		Request:   msgReq,
 		StarTime:  time.Now(),
 	}
+
+	c.Id = uuid.New()
+
+	return &c
+}
+
+func (c *RequestContext) GetId() uuid.UUID {
+	return c.Id
+}
+
+func (c *RequestContext) Attributes() *Attributes {
+	if c == nil || c.ClientCtx == nil {
+		return nil
+	}
+
+	return &Attributes{"connId": c.ClientCtx.Id.String()}
 }

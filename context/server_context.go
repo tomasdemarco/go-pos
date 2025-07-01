@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type ClientContext struct {
+type ServerContext struct {
 	Id         uuid.UUID
 	Conn       net.Conn
 	Reader     *bufio.Reader
@@ -17,8 +17,8 @@ type ClientContext struct {
 	EndTime    time.Time
 }
 
-func NewClientContext(conn net.Conn) *ClientContext {
-	c := ClientContext{
+func NewServerContext(conn net.Conn) *ServerContext {
+	c := ServerContext{
 		StarTime:   time.Now(),
 		Conn:       conn,
 		Reader:     bufio.NewReader(conn),
@@ -31,11 +31,11 @@ func NewClientContext(conn net.Conn) *ClientContext {
 	return &c
 }
 
-func (c *ClientContext) GetId() uuid.UUID {
+func (c *ServerContext) GetId() uuid.UUID {
 	return c.Id // Devuelve el campo ID
 }
 
-func (c *ClientContext) Attributes() *Attributes {
+func (c *ServerContext) Attributes() *Attributes {
 	if c == nil {
 		return nil
 	}

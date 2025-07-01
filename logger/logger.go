@@ -9,15 +9,17 @@ import (
 )
 
 type Logger struct {
-	Level LogLevel
+	Level   LogLevel
+	Service *string
 }
 
-func New(level LogLevel) *Logger {
+func New(level LogLevel, service string) *Logger {
 	// Logs without flags
 	log.SetFlags(0)
 
 	return &Logger{
 		level,
+		&service,
 	}
 }
 

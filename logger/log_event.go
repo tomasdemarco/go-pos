@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (l *Logger) ISOMessage(c *ctx.RequestContext, message *message.Message, service ...string) (err error) {
+func (l *Logger) ISOMessage(c ctx.Context, message *message.Message) (err error) {
 	if l.Level <= Info {
 		mti, err := message.GetField("000")
 		if err != nil {
@@ -49,17 +49,21 @@ func (l *Logger) ISOMessage(c *ctx.RequestContext, message *message.Message, ser
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
 
+		if l.Service != nil {
+			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
+		}
+
+		if c != nil && c.GetId() != uuid.Nil {
+			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
+		}
+
+		sb.WriteString(fmt.Sprintf(",\"isoMsg\":%s", string(jsonAuth)))
+
 		if c != nil {
-			if c.Id != uuid.Nil {
-				sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.Id))
-			}
+			sb.WriteString(c.Attributes().String())
 		}
 
-		if service != nil && len(service) > 0 {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
-		}
-
-		sb.WriteString(fmt.Sprintf(",\"isoMsg\":%s}", string(jsonAuth)))
+		sb.WriteString("}")
 
 		log.Printf("%s", sb.String())
 	}
@@ -67,61 +71,67 @@ func (l *Logger) ISOMessage(c *ctx.RequestContext, message *message.Message, ser
 	return nil
 }
 
-func (l *Logger) Info(c *ctx.RequestContext, logType LogType, i interface{}, service ...string) {
+func (l *Logger) Info(c ctx.Context, logType LogType, i interface{}) {
 	if l.Level <= Info {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
 
+		if l.Service != nil {
+			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
+		}
+
+		if c != nil && c.GetId() != uuid.Nil {
+			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
+		}
+
+		sb.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", logType.String(), i))
+
 		if c != nil {
-			if c.Id != uuid.Nil {
-				sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.Id))
-			}
+			sb.WriteString(c.Attributes().String())
 		}
 
-		if service != nil && len(service) > 0 {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
-		}
-
-		sb.WriteString(fmt.Sprintf(",\"%s\":\"%s\"}", logType.String(), i))
+		sb.WriteString("}")
 
 		log.Printf("%s", sb.String())
 	}
 }
 
-func (l *Logger) Debug(c *ctx.RequestContext, i interface{}, service ...string) {
+func (l *Logger) Debug(c ctx.Context, i interface{}) {
 	if l.Level == Debug {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
 
+		if l.Service != nil {
+			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
+		}
+
+		if c != nil && c.GetId() != uuid.Nil {
+			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
+		}
+
+		sb.WriteString(fmt.Sprintf(",\"debug\":\"%s\"", i))
+
 		if c != nil {
-			if c.Id != uuid.Nil {
-				sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.Id))
-			}
+			sb.WriteString(c.Attributes().String())
 		}
 
-		if service != nil && len(service) > 0 {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
-		}
-
-		sb.WriteString(fmt.Sprintf(",\"debug\":\"%s\"}", i))
+		sb.WriteString("}")
 
 		log.Printf("%s", sb.String())
 	}
 }
 
-func (l *Logger) Error(c *ctx.RequestContext, err error, service ...string) {
+func (l *Logger) Error(c ctx.Context, err error) {
 	if l.Level <= Error {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
 
-		if c != nil {
-			if c.Id != uuid.Nil {
-				sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.Id))
-			}
+		if l.Service != nil {
+			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
 		}
 
-		if service != nil && len(service) > 0 {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
+		if c != nil && c.GetId() != uuid.Nil {
+			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
 		}
 
 		if l.Level == Debug {
@@ -129,19 +139,25 @@ func (l *Logger) Error(c *ctx.RequestContext, err error, service ...string) {
 
 			value, errMarshal := json.Marshal(fmt.Sprintf("%v - %s[%s:%d]", err, runtime.FuncForPC(pc).Name(), file, line))
 			if errMarshal != nil {
-				l.Error(c, errMarshal, "logger")
+				l.Error(c, errMarshal)
 			}
 
-			sb.WriteString(fmt.Sprintf(",\"error\":%s}", string(value)))
+			sb.WriteString(fmt.Sprintf(",\"error\":%s", string(value)))
 		} else {
-			sb.WriteString(fmt.Sprintf(",\"error\":\"%v\"}", err))
+			sb.WriteString(fmt.Sprintf(",\"error\":\"%v\"", err))
 		}
+
+		if c != nil {
+			sb.WriteString(c.Attributes().String())
+		}
+
+		sb.WriteString("}")
 
 		log.Printf("%s", sb.String())
 	}
 }
 
-func (l *Logger) Panic(c *ctx.RequestContext, err error, panic []byte, service ...string) {
+func (l *Logger) Panic(c ctx.Context, err error, panic []byte) {
 	if l.Level <= Fatal {
 		var sbStack strings.Builder
 		stack := strings.Split(strings.Replace(string(panic), "\t", "", -1), "\n")
@@ -158,17 +174,21 @@ func (l *Logger) Panic(c *ctx.RequestContext, err error, panic []byte, service .
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
 
+		if l.Service != nil {
+			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
+		}
+
+		if c != nil && c.GetId() != uuid.Nil {
+			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
+		}
+
+		sb.WriteString(fmt.Sprintf(",\"panic\":\"%v\",\"stack\":[%s]", err, sbStack.String()))
+
 		if c != nil {
-			if c.Id != uuid.Nil {
-				sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.Id))
-			}
+			sb.WriteString(c.Attributes().String())
 		}
 
-		if service != nil && len(service) > 0 {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", service[0]))
-		}
-
-		sb.WriteString(fmt.Sprintf(",\"panic\":\"%v\",\"stack\":[%s]}", err, sbStack.String()))
+		sb.WriteString("}")
 
 		log.Printf("%s", sb.String())
 	}

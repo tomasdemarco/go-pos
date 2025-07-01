@@ -84,11 +84,11 @@ func (s *Server) Run() error {
 	//Inicia a escuchar clientes
 	listener, err := net.Listen(s.Network, fmt.Sprintf(":%d", s.Port))
 	if err != nil {
-		s.Logger.Error(nil, errors.New(fmt.Sprintf("error listening: err %v", err)), s.Name)
+		s.Logger.Error(nil, errors.New(fmt.Sprintf("error listening: err %v", err)))
 		return err
 	}
 
-	s.Logger.Info(nil, logger.Message, fmt.Sprintf("listening on port %d", s.Port), s.Name)
+	s.Logger.Info(nil, logger.Message, fmt.Sprintf("listening on port %d", s.Port))
 
 	//Escucha a los clientes
 	s.listenClient(listener)
@@ -97,9 +97,9 @@ func (s *Server) Run() error {
 	defer func() {
 		err = listener.Close()
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error finish listen on port%d: %v", s.Port, err)), s.Name)
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error finish listen on port%d: %v", s.Port, err)))
 		}
-		s.Logger.Info(nil, logger.Message, fmt.Sprintf("finish listen on port %d", s.Port), s.Name)
+		s.Logger.Info(nil, logger.Message, fmt.Sprintf("finish listen on port %d", s.Port))
 	}()
 
 	return nil
@@ -110,21 +110,22 @@ func (s *Server) listenClient(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s. %s", conn.RemoteAddr().String(), s.Name))
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("err accept: %v", err)), s.Name)
+			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s. %s", conn.RemoteAddr().String()))
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("err accept: %v", err)))
 		} else {
 			select {
 			case s.sem <- struct{}{}: // Intenta adquirir el semáforo
-				s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s", conn.RemoteAddr().String()), s.Name)
-				s.Logger.Info(nil, logger.Message, fmt.Sprintf("accept local port %s / remote host %s", conn.LocalAddr().String(), conn.RemoteAddr().String()), s.Name)
-
 				clientCtx := ctx.NewClientContext(conn)
+
+				s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection established to %s (%s)", conn.RemoteAddr().String(), clientCtx.Id.String()))
+				s.Logger.Info(nil, logger.Message, fmt.Sprintf("accept local port %s / remote host %s (%s)", conn.LocalAddr().String(), conn.RemoteAddr().String(), clientCtx.Id.String()))
+
 				go s.handleClient(clientCtx)
 			default:
 				s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection limit reached, rejecting: %s", conn.LocalAddr().String()))
 				err = conn.Close()
 				if err != nil {
-					s.Logger.Error(nil, errors.New(fmt.Sprintf("error disconnection client: %v", err)), s.Name)
+					s.Logger.Error(nil, errors.New(fmt.Sprintf("error disconnection client: %v", err)))
 				}
 			}
 		}
@@ -136,19 +137,19 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error %s: err %v", s.Name, err)))
-				s.Logger.Panic(nil, errors.New(fmt.Sprintf("error %s: err %v", s.Name, err)), debug.Stack())
+				s.Logger.Error(clientCtx, err)
+				s.Logger.Panic(clientCtx, err, debug.Stack())
 			}
 		}
 	}()
 
 	//Cierra la conexion con el cliente al retornar
 	defer func() {
-		s.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", clientCtx.RemoteAddr), s.Name)
+		s.Logger.Info(clientCtx, logger.Message, fmt.Sprintf("disconnection to %s", clientCtx.RemoteAddr))
 		err := clientCtx.Conn.Close()
 		<-s.sem
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error disconnection client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+			s.Logger.Error(clientCtx, errors.New(fmt.Sprintf("disconnection to %s: %v", clientCtx.RemoteAddr, err)))
 			return
 		}
 	}()
@@ -158,7 +159,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		lengthVal, err := s.LengthUnpackFunc(clientCtx.Reader, s.Packager.Prefix)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+				s.Logger.Error(clientCtx, err)
 			}
 			break
 		}
@@ -168,19 +169,20 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		}
 
 		if lengthVal > s.MaxMessageSize {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: invalid length (%d), longer than allowed", clientCtx.RemoteAddr, lengthVal)), s.Name)
+			s.Logger.Error(clientCtx, errors.New(fmt.Sprintf("invalid received message length (%d), longer than allowed", lengthVal)))
 			return
 		}
 
-		s.Logger.Debug(nil, fmt.Sprintf("received message length: %d", lengthVal), s.Name)
-
 		msgReq := message.NewMessage(s.Packager)
+		c := ctx.NewRequestContext(clientCtx, msgReq)
+
+		s.Logger.Debug(c, fmt.Sprintf("received message length: %d", lengthVal))
 
 		msgReq.Length = lengthVal
 		headerVal, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+				s.Logger.Error(c, err)
 			}
 			break
 		}
@@ -189,9 +191,9 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		if msgReq.Header != nil {
 			if _, ok := msgReq.Header.([]byte); ok {
-				s.Logger.Debug(nil, fmt.Sprintf("received message header: %x", msgReq.Header.([]byte)), s.Name)
+				s.Logger.Debug(c, fmt.Sprintf("received message header: %x", msgReq.Header.([]byte)))
 			} else {
-				s.Logger.Debug(nil, fmt.Sprintf("received message header: %v", msgReq.Header), s.Name)
+				s.Logger.Debug(c, fmt.Sprintf("received message header: %v", msgReq.Header))
 			}
 		}
 
@@ -200,23 +202,22 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		_, err = io.ReadFull(clientCtx.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+				s.Logger.Error(c, err)
 			}
 			break
 		}
 
-		s.Logger.Debug(nil, fmt.Sprintf("received a message: %x", msgRaw), s.Name)
+		s.Logger.Debug(c, fmt.Sprintf("received a message: %x", msgRaw))
 
 		err = msgReq.Unpack(msgRaw)
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+			s.Logger.Error(c, err)
 		} else {
-			c := ctx.NewRequestContext(clientCtx, msgReq)
 
-			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw), s.Name)
-			err = s.Logger.ISOMessage(c, msgReq, s.Name)
+			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw))
+			err = s.Logger.ISOMessage(c, msgReq)
 			if err != nil {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("err: %v", err)), s.Name)
+				s.Logger.Error(c, err)
 			}
 
 			go s.HandlerFunc(c)
@@ -225,7 +226,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 		trailerVal, _, err := s.TrailerUnpackFunc(clientCtx.Reader)
 		if err != nil {
 			if err != io.EOF {
-				s.Logger.Error(nil, errors.New(fmt.Sprintf("error read client %s: %v", clientCtx.RemoteAddr, err)), s.Name)
+				s.Logger.Error(c, err)
 			}
 			break
 		}
@@ -234,9 +235,9 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		if msgReq.Trailer != nil {
 			if _, ok := msgReq.Trailer.([]byte); ok {
-				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)), s.Name)
+				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)))
 			} else {
-				s.Logger.Debug(nil, fmt.Sprintf("received message trailer: %v", msgReq.Trailer), s.Name)
+				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %v", msgReq.Trailer))
 			}
 		}
 	}
@@ -259,7 +260,7 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 
 	s.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", msgRaw))
 
-	err = s.Logger.ISOMessage(ctx, msg, s.Name)
+	err = s.Logger.ISOMessage(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -280,8 +281,8 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 		return err
 	}
 
-	s.Logger.Info(ctx, logger.Message, fmt.Sprintf("elapsed time %.3fms", float64(time.Since(ctx.StarTime).Nanoseconds())/1e6), s.Name)
-	s.Logger.Debug(ctx, fmt.Sprintf("sent a response message: %x", buf.Bytes()), s.Name)
+	s.Logger.Info(ctx, logger.Message, fmt.Sprintf("elapsed time %.3fms", float64(time.Since(ctx.StarTime).Nanoseconds())/1e6))
+	s.Logger.Debug(ctx, fmt.Sprintf("sent a response message: %x", buf.Bytes()))
 
 	return nil
 }
