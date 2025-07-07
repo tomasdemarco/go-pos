@@ -46,9 +46,10 @@ func main() {
 		host,
 		port,
 		20000,
+		true,
 		&pkg,
 		nil,
-		logger.New(logger.Info),
+		logger.New(logger.Info, "client-prueba"),
 	)
 
 	cli.LengthPackFunc = length.Pack

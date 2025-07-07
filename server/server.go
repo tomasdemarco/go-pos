@@ -68,8 +68,8 @@ func New(
 		TrailerGetLengthFunc: trailer.GetLength,
 		maxClients:           maxClients,
 		sem:                  make(chan struct{}, maxClients),
-		ReadClientTimeout:    5 * time.Minute,
-		ReadMessageTimeout:   5 * time.Second,
+		ReadClientTimeout:    10 * time.Minute,
+		ReadMessageTimeout:   10 * time.Second,
 		MaxMessageSize:       4096,
 	}
 
@@ -272,11 +272,6 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 	buf.Write(trailerRaw)
 
 	_, err = ctx.ClientCtx.Writer.Write(buf.Bytes())
-	if err != nil {
-		return err
-	}
-
-	err = ctx.ClientCtx.Writer.Flush()
 	if err != nil {
 		return err
 	}

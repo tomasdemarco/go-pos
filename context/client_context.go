@@ -11,7 +11,7 @@ type ClientContext struct {
 	Id         uuid.UUID
 	Conn       net.Conn
 	Reader     *bufio.Reader
-	Writer     *bufio.Writer
+	Writer     *SafeWriter
 	RemoteAddr string
 	StarTime   time.Time
 	EndTime    time.Time
@@ -22,7 +22,7 @@ func NewClientContext(conn net.Conn) *ClientContext {
 		StarTime:   time.Now(),
 		Conn:       conn,
 		Reader:     bufio.NewReader(conn),
-		Writer:     bufio.NewWriter(conn),
+		Writer:     NewSafeWriter(conn),
 		RemoteAddr: conn.RemoteAddr().String(),
 	}
 

@@ -33,7 +33,7 @@ func main() {
 		true,
 		pkg,
 		&[]string{"007", "011"},
-		logger.New(logger.Debug),
+		logger.New(logger.Debug, "client-prueba"),
 	)
 
 	cli.LengthPackFunc = length.Pack
@@ -56,7 +56,7 @@ func main() {
 
 		err = cli.Send(ctx, msg)
 		if err != nil {
-			cli.Logger.Error(ctx, err, cli.Name)
+			cli.Logger.Error(ctx, err)
 		}
 
 		sleepArr := []int{0, 10000, 5000}
@@ -67,7 +67,7 @@ func main() {
 			time.Sleep(time.Duration(sleepArr[0]) * time.Millisecond)
 			_, err = cli.Wait(ctx)
 			if err != nil {
-				cli.Logger.Error(ctx, err, cli.Name)
+				cli.Logger.Error(ctx, err)
 			}
 		}()
 

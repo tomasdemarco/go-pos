@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"github.com/google/uuid"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -11,7 +12,7 @@ type ServerContext struct {
 	Id         uuid.UUID
 	Conn       net.Conn
 	Reader     *bufio.Reader
-	Writer     *bufio.Writer
+	Writer     *SafeWriter
 	RemoteAddr string
 	StarTime   time.Time
 	EndTime    time.Time
@@ -22,7 +23,7 @@ func NewServerContext(conn net.Conn) *ServerContext {
 		StarTime:   time.Now(),
 		Conn:       conn,
 		Reader:     bufio.NewReader(conn),
-		Writer:     bufio.NewWriter(conn),
+		Writer:     NewSafeWriter(conn),
 		RemoteAddr: conn.RemoteAddr().String(),
 	}
 
@@ -41,4 +42,28 @@ func (c *ServerContext) Attributes() *Attributes {
 	}
 
 	return &Attributes{"connId": c.Id.String()}
+}
+
+type SafeWriter struct {
+	writer *bufio.Writer
+	mu     sync.Mutex
+}
+
+func NewSafeWriter(conn net.Conn) *SafeWriter {
+	return &SafeWriter{
+		writer: bufio.NewWriter(conn),
+	}
+}
+
+func (sw *SafeWriter) Write(b []byte) (n int, err error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	n, err = sw.writer.Write(b)
+	if err != nil {
+		return n, err
+	}
+
+	err = sw.writer.Flush()
+	return n, err
 }

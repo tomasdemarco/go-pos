@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
@@ -17,7 +16,6 @@ import (
 
 func main() {
 	pkg, err := packager.LoadFromJsonV2("./iso8583/packager", "iso87BPackager.json")
-	//pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87EAmexPackager.json")
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
@@ -27,10 +25,10 @@ func main() {
 	srv := server.New(
 		"server-prueba",
 		port,
-		15000,
 		pkg,
-		logger.New(logger.Debug),
+		logger.New(logger.Debug, "server-prueba"),
 		HandleRequest,
+		10,
 	)
 
 	srv.HeaderPackFunc = HeaderPack
@@ -75,7 +73,7 @@ func HandleRequest(c *ctx.RequestContext, s *server.Server) {
 
 	err = s.SendResponse(c, msgRes)
 	if err != nil {
-		s.Logger.Error(c, errors.New(fmt.Sprintf("error trying to send response message to the client: %v", err)), s.Name)
+		s.Logger.Error(c, fmt.Errorf("error trying to send response message to the client: %w", err))
 	}
 }
 
