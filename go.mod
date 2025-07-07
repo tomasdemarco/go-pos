@@ -6,7 +6,7 @@ toolchain go1.22.5
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tomasdemarco/iso8583 v1.7.8
+	github.com/tomasdemarco/iso8583 v1.7.9
 )
 
 //replace github.com/tomasdemarco/iso8583 => C:/Users/tdemarco/Desktop/iso8583
