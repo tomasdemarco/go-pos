@@ -11,16 +11,18 @@ const (
 	Message LogType = iota
 	IsoPack
 	IsoUnpack
+	IsoMessage
 	Request
 	Response
 )
 
 var logTypeStrings = [...]string{
-	Message:   "message",
-	IsoPack:   "pack",
-	IsoUnpack: "unpack",
-	Request:   "request",
-	Response:  "response",
+	Message:    "message",
+	IsoPack:    "pack",
+	IsoUnpack:  "unpack",
+	IsoMessage: "isoMsg",
+	Request:    "request",
+	Response:   "response",
 }
 
 // String return string

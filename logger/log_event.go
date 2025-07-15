@@ -5,71 +5,11 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	ctx "github.com/tomasdemarco/go-pos/context"
-	"github.com/tomasdemarco/iso8583/message"
 	"log"
 	"runtime"
 	"strings"
 	"time"
 )
-
-func (l *Logger) ISOMessage(c ctx.Context, message *message.Message) (err error) {
-	if l.Level <= Info {
-		mti, err := message.GetField("000")
-		if err != nil {
-			return err
-		}
-
-		fields := make(map[string]interface{})
-		fields["000"] = mti
-
-		if l.Level == Debug {
-			bitmap, err := message.GetField("001")
-			if err != nil {
-				return err
-			}
-			fields["001"] = bitmap
-		}
-
-		for _, fldId := range message.Bitmap {
-			if fldId != "000" && fldId != "001" {
-				fld, err := message.GetField(fldId)
-				if err != nil {
-					return err
-				}
-
-				fields[fldId] = fld
-			}
-		}
-
-		jsonAuth, err := json.Marshal(fields)
-		if err != nil {
-			return err
-		}
-
-		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("{\"time\":\"%s\"", time.Now().Format("2006-01-02 15:04:05.000")))
-
-		if l.Service != nil {
-			sb.WriteString(fmt.Sprintf(",\"service\":\"%s\"", *l.Service))
-		}
-
-		if c != nil && c.GetId() != uuid.Nil {
-			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
-		}
-
-		sb.WriteString(fmt.Sprintf(",\"isoMsg\":%s", string(jsonAuth)))
-
-		if c != nil {
-			sb.WriteString(c.Attributes().String())
-		}
-
-		sb.WriteString("}")
-
-		log.Printf("%s", sb.String())
-	}
-
-	return nil
-}
 
 func (l *Logger) Info(c ctx.Context, logType LogType, i interface{}) {
 	if l.Level <= Info {
@@ -84,7 +24,11 @@ func (l *Logger) Info(c ctx.Context, logType LogType, i interface{}) {
 			sb.WriteString(fmt.Sprintf(",\"id\":\"%s\"", c.GetId().String()))
 		}
 
-		sb.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", logType.String(), i))
+		if logType == IsoMessage {
+			sb.WriteString(fmt.Sprintf(",\"%s\":%s", logType.String(), i))
+		} else {
+			sb.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", logType.String(), i))
+		}
 
 		if c != nil {
 			sb.WriteString(c.Attributes().String())

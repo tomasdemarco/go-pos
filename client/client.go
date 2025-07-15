@@ -32,7 +32,7 @@ type Client struct {
 	RemoteAddr          string
 	OngoingTransactions *OngoingTransactions
 	Packager            *packager.Packager
-	MatchFields         []string
+	MatchFields         []int
 	Stan                *utils.Stan
 	Logger              *logger.Logger
 	LengthPackFunc      length.PackFunc
@@ -56,7 +56,7 @@ func New(
 	timeout int,
 	autoReconnect bool,
 	packager *packager.Packager,
-	matchFields *[]string,
+	matchFields *[]int,
 	logger *logger.Logger,
 ) *Client {
 	client := Client{
@@ -67,8 +67,8 @@ func New(
 		Timeout:             time.Duration(timeout) * time.Millisecond,
 		AutoReconnect:       autoReconnect,
 		Packager:            packager,
-		MatchFields:         []string{"000", "007", "011"},
-		Stan:                utils.NewStan(),
+		MatchFields:         []int{0, 7, 11},
+		Stan:                utils.NewStan(1, 999999),
 		Logger:              logger,
 		OngoingTransactions: NewOngoingTransactions(),
 		LengthPackFunc:      length.Pack,
@@ -195,7 +195,7 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 		if msgRes.Header != nil {
 			if _, ok := msgRes.Header.([]byte); ok {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message header: %x", msgRes.Header.([]byte)))
+				c.Logger.Debug(ctx, fmt.Sprintf("received message header: %X", msgRes.Header.([]byte)))
 			} else {
 				c.Logger.Debug(ctx, fmt.Sprintf("received message header: %v", msgRes.Header))
 			}
@@ -225,13 +225,13 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 		if msgRes.Trailer != nil {
 			if _, ok := msgRes.Trailer.([]byte); ok {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message trailer: %x", msgRes.Trailer.([]byte)))
+				c.Logger.Debug(ctx, fmt.Sprintf("received message trailer: %X", msgRes.Trailer.([]byte)))
 			} else {
 				c.Logger.Debug(ctx, fmt.Sprintf("received message trailer: %v", msgRes.Trailer))
 			}
 		}
 
-		c.Logger.Debug(ctx, fmt.Sprintf("received a message: %x", msgRaw))
+		c.Logger.Debug(ctx, fmt.Sprintf("received a message: %X", msgRaw))
 
 		err = msgRes.Unpack(msgRaw)
 		if err != nil {
@@ -245,22 +245,14 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 			if c.OngoingTransactions.List[messageId].Message != nil || !c.OngoingTransactions.IsChanClosed(messageId) {
 				c.Logger.Debug(c.OngoingTransactions.List[messageId].Ctx, fmt.Sprintf("received a message, id: %s", messageId))
-				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw))
-
-				err = c.Logger.ISOMessage(c.OngoingTransactions.List[messageId].Ctx, msgRes)
-				if err != nil {
-					c.Logger.Error(c.OngoingTransactions.List[messageId].Ctx, err)
-				}
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msgRes.Log())
 
 				c.OngoingTransactions.List[messageId].Message <- *msgRes
 			} else {
 				c.Logger.Debug(ctx, fmt.Sprintf("received an unmatched message, id: %s", messageId))
-				c.Logger.Info(ctx, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw))
-
-				err = c.Logger.ISOMessage(c.OngoingTransactions.List[messageId].Ctx, msgRes)
-				if err != nil {
-					c.Logger.Error(ctx, err)
-				}
+				c.Logger.Info(ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msgRes.Log())
 			}
 		}
 	}
@@ -281,21 +273,27 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 		return err
 	}
 
-	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", messageResponseRaw))
-
-	err = c.Logger.ISOMessage(ctx, msg)
-	if err != nil {
-		c.Logger.Error(ctx, err)
-		return err
-	}
+	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%X", messageResponseRaw))
+	c.Logger.Info(ctx, logger.IsoMessage, msg.Log())
 
 	var messageId string
 	for _, v := range c.MatchFields {
-		if v == "000" {
-			fld, _ := ctx.Request.GetField(v)
-			messageId += utils.GetMtiResponse(fld)
+		if v == 0 {
+			fld, err := ctx.Request.GetField(v)
+			if err != nil {
+				return err
+			}
+
+			mti, err := utils.GetMtiResponse(fld)
+			if err != nil {
+				return err
+			}
+			messageId += mti
 		} else {
-			fld, _ := ctx.Request.GetField(v)
+			fld, err := ctx.Request.GetField(v)
+			if err != nil {
+				return err
+			}
 			messageId += fld
 		}
 	}
@@ -333,7 +331,7 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 	}
 
 	if err == nil {
-		c.Logger.Debug(ctx, fmt.Sprintf("sent a message: %x", buf.Bytes()))
+		c.Logger.Debug(ctx, fmt.Sprintf("sent a message: %X", buf.Bytes()))
 		return nil
 	}
 
@@ -344,12 +342,17 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 func (c *Client) Wait(reqCtx *context.RequestContext) (*message.Message, error) {
 	var messageId string
 	for _, v := range c.MatchFields {
-		if v == "000" {
+		if v == 0 {
 			fld, err := reqCtx.Request.GetField(v)
 			if err != nil {
 				return nil, err
 			}
-			messageId += utils.GetMtiResponse(fld)
+
+			mti, err := utils.GetMtiResponse(fld)
+			if err != nil {
+				return nil, err
+			}
+			messageId += mti
 		} else {
 			fld, err := reqCtx.Request.GetField(v)
 			if err != nil {

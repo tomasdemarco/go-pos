@@ -57,7 +57,7 @@ func New(
 		Network:              "tcp",
 		Port:                 port,
 		Packager:             packager,
-		Stan:                 utils.NewStan(),
+		Stan:                 utils.NewStan(1, 999999),
 		Logger:               logger,
 		LengthPackFunc:       length.Pack,
 		LengthUnpackFunc:     length.Unpack,
@@ -97,7 +97,7 @@ func (s *Server) Run() error {
 	defer func() {
 		err = listener.Close()
 		if err != nil {
-			s.Logger.Error(nil, errors.New(fmt.Sprintf("error finish listen on port%d: %v", s.Port, err)))
+			s.Logger.Error(nil, errors.New(fmt.Sprintf("error finish listen on port %d: %v", s.Port, err)))
 		}
 		s.Logger.Info(nil, logger.Message, fmt.Sprintf("finish listen on port %d", s.Port))
 	}()
@@ -110,7 +110,7 @@ func (s *Server) listenClient(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s. %s", conn.RemoteAddr().String()))
+			s.Logger.Info(nil, logger.Message, fmt.Sprintf("connection refused to %s", conn.RemoteAddr().String()))
 			s.Logger.Error(nil, errors.New(fmt.Sprintf("err accept: %v", err)))
 		} else {
 			select {
@@ -191,7 +191,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		if msgReq.Header != nil {
 			if _, ok := msgReq.Header.([]byte); ok {
-				s.Logger.Debug(c, fmt.Sprintf("received message header: %x", msgReq.Header.([]byte)))
+				s.Logger.Debug(c, fmt.Sprintf("received message header: %X", msgReq.Header.([]byte)))
 			} else {
 				s.Logger.Debug(c, fmt.Sprintf("received message header: %v", msgReq.Header))
 			}
@@ -207,18 +207,15 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 			break
 		}
 
-		s.Logger.Debug(c, fmt.Sprintf("received a message: %x", msgRaw))
+		s.Logger.Debug(c, fmt.Sprintf("received a message: %X", msgRaw))
 
 		err = msgReq.Unpack(msgRaw)
 		if err != nil {
 			s.Logger.Error(c, err)
 		} else {
 
-			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%x", msgRaw))
-			err = s.Logger.ISOMessage(c, msgReq)
-			if err != nil {
-				s.Logger.Error(c, err)
-			}
+			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
+			s.Logger.Info(c, logger.IsoMessage, msgReq.Log())
 
 			go s.HandlerFunc(c)
 		}
@@ -235,7 +232,7 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		if msgReq.Trailer != nil {
 			if _, ok := msgReq.Trailer.([]byte); ok {
-				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %x", msgReq.Trailer.([]byte)))
+				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %X", msgReq.Trailer.([]byte)))
 			} else {
 				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %v", msgReq.Trailer))
 			}
@@ -258,12 +255,8 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 		return err
 	}
 
-	s.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%x", msgRaw))
-
-	err = s.Logger.ISOMessage(ctx, msg)
-	if err != nil {
-		return err
-	}
+	s.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%X", msgRaw))
+	s.Logger.Info(ctx, logger.IsoMessage, msg.Log())
 
 	buf := new(bytes.Buffer)
 	buf.Write(lengthPacked)
@@ -277,7 +270,7 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 	}
 
 	s.Logger.Info(ctx, logger.Message, fmt.Sprintf("elapsed time %.3fms", float64(time.Since(ctx.StarTime).Nanoseconds())/1e6))
-	s.Logger.Debug(ctx, fmt.Sprintf("sent a response message: %x", buf.Bytes()))
+	s.Logger.Debug(ctx, fmt.Sprintf("sent a response message: %X", buf.Bytes()))
 
 	return nil
 }
