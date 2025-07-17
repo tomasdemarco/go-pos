@@ -2,3 +2,4 @@ github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/tomasdemarco/iso8583 v1.8.2 h1:7d9r/pxnxwjagIHERzhkN4BI5ox4wXcCQj1vlONHyf8=
 github.com/tomasdemarco/iso8583 v1.8.2/go.mod h1:WpIwgm9X5Dr/CvZgual/kLPJnsPgkgOLH0V4nTXr+Tc=
+github.com/tomasdemarco/iso8583 v1.8.3/go.mod h1:WpIwgm9X5Dr/CvZgual/kLPJnsPgkgOLH0V4nTXr+Tc=
