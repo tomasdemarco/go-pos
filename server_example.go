@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	pkg, err := packager.LoadFromJsonV2("./iso8583/packager", "iso87BPackager.json")
+	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BPackager.json")
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
@@ -23,12 +23,12 @@ func main() {
 	port := 8015
 
 	srv := server.New(
-		"server-prueba",
 		port,
 		pkg,
-		logger.New(logger.Debug, "server-prueba"),
 		HandleRequest,
-		10,
+		server.WithName("server-prueba"),
+		server.WithLogger(logger.New(logger.Debug, "server-prueba")),
+		server.WithMaxClients(10),
 	)
 
 	srv.HeaderPackFunc = HeaderPack
@@ -64,7 +64,7 @@ func main() {
 func HandleRequest(c *ctx.RequestContext, s *server.Server) {
 	var msgRes *message.Message
 
-	fld, err := c.Request.GetField("000")
+	fld, err := c.Request.GetField(0)
 	if err == nil && fld == "1804" {
 		msgRes = PrepareEchoResponse(c.Request)
 	} else {
@@ -80,19 +80,13 @@ func HandleRequest(c *ctx.RequestContext, s *server.Server) {
 func PrepareResponse(messageRequest *message.Message) *message.Message {
 	messageResponse := message.NewMessage(messageRequest.Packager)
 
-	//header := make(map[string]string)
-	//header["01"] = messageRequest.Header["01"]
-	//header["02"] = messageRequest.Header["03"]
-	//header["03"] = messageRequest.Header["02"]
-	//messageResponse.Header = header
-
-	fld, err := messageRequest.GetField("000")
+	fld, err := messageRequest.GetField(0)
 	if err == nil {
-		messageResponse.SetField("000", GetMtiResponse(fld))
+		messageResponse.SetField(0, GetMtiResponse(fld))
 	}
 
-	for _, value := range messageRequest.Bitmap {
-		if value != "000" && value != "001" {
+	for _, value := range messageRequest.Bitmap.GetSliceString() {
+		if value != 0 && value != 1 {
 
 			fld, err := messageRequest.GetField(value)
 			if err == nil {
@@ -106,9 +100,9 @@ func PrepareResponse(messageRequest *message.Message) *message.Message {
 	num := r.Intn(100000)
 	de38 := fmt.Sprintf("%06d", num)
 
-	messageResponse.SetField("038", de38)
+	messageResponse.SetField(38, de38)
 
-	messageResponse.SetField("039", "00")
+	messageResponse.SetField(39, "00")
 
 	return messageResponse
 }
@@ -117,29 +111,29 @@ func PrepareEchoResponse(message800 *message.Message) *message.Message {
 
 	message0810 := message.NewMessage(message800.Packager)
 
-	message0810.SetField("000", "1814")
-	fld, err := message800.GetField("003")
+	message0810.SetField(0, "1814")
+	fld, err := message800.GetField(3)
 	if err == nil {
-		message0810.SetField("003", fld)
+		message0810.SetField(3, fld)
 	}
-	fld, err = message800.GetField("007")
+	fld, err = message800.GetField(7)
 	if err == nil {
-		message0810.SetField("007", fld)
+		message0810.SetField(7, fld)
 	}
-	fld, err = message800.GetField("011")
+	fld, err = message800.GetField(11)
 	if err == nil {
-		message0810.SetField("011", fld)
+		message0810.SetField(11, fld)
 	}
-	fld, err = message800.GetField("012")
+	fld, err = message800.GetField(12)
 	if err == nil {
-		message0810.SetField("012", fld)
+		message0810.SetField(12, fld)
 	}
-	fld, err = message800.GetField("024")
+	fld, err = message800.GetField(24)
 	if err == nil {
-		message0810.SetField("024", fld)
+		message0810.SetField(24, fld)
 	}
 
-	message0810.SetField("039", "800")
+	message0810.SetField(39, "800")
 
 	return message0810
 }

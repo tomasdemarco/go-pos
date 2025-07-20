@@ -1,8 +1,12 @@
 package context
 
-import "github.com/google/uuid"
+import (
+	"context"
+	"github.com/google/uuid"
+)
 
 type Context interface {
+	context.Context
 	GetId() uuid.UUID
 	Attributes() *Attributes
 }

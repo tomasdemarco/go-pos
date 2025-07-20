@@ -2,6 +2,7 @@ package context
 
 import (
 	"bufio"
+	"context"
 	"github.com/google/uuid"
 	"net"
 	"sync"
@@ -9,6 +10,9 @@ import (
 )
 
 type ServerContext struct {
+	baseCtx context.Context
+	data    map[any]any
+
 	Id         uuid.UUID
 	Conn       net.Conn
 	Reader     *bufio.Reader
@@ -66,4 +70,28 @@ func (sw *SafeWriter) Write(b []byte) (n int, err error) {
 
 	err = sw.writer.Flush()
 	return n, err
+}
+
+// Deadline reenvía la llamada al contexto base.
+func (c *ServerContext) Deadline() (deadline time.Time, ok bool) {
+	return c.baseCtx.Deadline()
+}
+
+// Done reenvía la llamada al contexto base.
+func (c *ServerContext) Done() <-chan struct{} {
+	return c.baseCtx.Done()
+}
+
+// Err reenvía la llamada al contexto base.
+func (c *ServerContext) Err() error {
+	return c.baseCtx.Err()
+}
+
+// Value intenta obtener el valor de nuestro mapa interno primero,
+// si no lo encuentra, lo busca en el contexto base.
+func (c *ServerContext) Value(key any) any {
+	if val, ok := c.data[key]; ok {
+		return val
+	}
+	return c.baseCtx.Value(key)
 }

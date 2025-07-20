@@ -1,12 +1,16 @@
 package context
 
 import (
+	"context"
 	"github.com/google/uuid"
 	"github.com/tomasdemarco/iso8583/message"
 	"time"
 )
 
 type RequestContext struct {
+	baseCtx context.Context
+	data    map[any]any
+
 	Id        uuid.UUID
 	ClientCtx *ClientContext
 	StarTime  time.Time
@@ -37,4 +41,28 @@ func (c *RequestContext) Attributes() *Attributes {
 	}
 
 	return &Attributes{"connId": c.ClientCtx.Id.String()}
+}
+
+// Deadline reenvía la llamada al contexto base.
+func (c *RequestContext) Deadline() (deadline time.Time, ok bool) {
+	return c.baseCtx.Deadline()
+}
+
+// Done reenvía la llamada al contexto base.
+func (c *RequestContext) Done() <-chan struct{} {
+	return c.baseCtx.Done()
+}
+
+// Err reenvía la llamada al contexto base.
+func (c *RequestContext) Err() error {
+	return c.baseCtx.Err()
+}
+
+// Value intenta obtener el valor de nuestro mapa interno primero,
+// si no lo encuentra, lo busca en el contexto base.
+func (c *RequestContext) Value(key any) any {
+	if val, ok := c.data[key]; ok {
+		return val
+	}
+	return c.baseCtx.Value(key)
 }

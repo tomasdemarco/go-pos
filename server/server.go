@@ -43,22 +43,60 @@ type Server struct {
 
 type HandlerFunc func(*ctx.RequestContext, *Server)
 
+type Option func(*Server)
+
+func WithName(name string) Option {
+	return func(s *Server) {
+		s.Name = name
+	}
+}
+
+func WithLogger(logger *logger.Logger) Option {
+	return func(s *Server) {
+		s.Logger = logger
+	}
+}
+
+func WithMaxClients(max int) Option {
+	return func(s *Server) {
+		s.maxClients = max
+		s.sem = make(chan struct{}, max)
+	}
+}
+
+func WithReadClientTimeout(timeout time.Duration) Option {
+	return func(s *Server) {
+		s.ReadClientTimeout = timeout
+	}
+}
+
+func WithReadMessageTimeout(timeout time.Duration) Option {
+	return func(s *Server) {
+		s.ReadMessageTimeout = timeout
+	}
+}
+
+func WithMaxMessageSize(size int) Option {
+	return func(s *Server) {
+		s.MaxMessageSize = size
+	}
+}
+
 func New(
-	name string,
 	port int,
 	packager *packager.Packager,
-	logger *logger.Logger,
 	handlerFunc HandlerFunc,
-	maxClients int,
+	opts ...Option,
 ) *Server {
 
+	// Default values
 	server := Server{
-		Name:                 name,
+		Name:                 "server",
 		Network:              "tcp",
 		Port:                 port,
 		Packager:             packager,
 		Stan:                 utils.NewStan(1, 999999),
-		Logger:               logger,
+		Logger:               logger.New(logger.Info, "server"),
 		LengthPackFunc:       length.Pack,
 		LengthUnpackFunc:     length.Unpack,
 		HeaderPackFunc:       header.Pack,
@@ -66,8 +104,8 @@ func New(
 		TrailerPackFunc:      trailer.Pack,
 		TrailerUnpackFunc:    trailer.Unpack,
 		TrailerGetLengthFunc: trailer.GetLength,
-		maxClients:           maxClients,
-		sem:                  make(chan struct{}, maxClients),
+		maxClients:           10, // Default max clients
+		sem:                  make(chan struct{}, 10),
 		ReadClientTimeout:    10 * time.Minute,
 		ReadMessageTimeout:   10 * time.Second,
 		MaxMessageSize:       4096,
@@ -75,6 +113,11 @@ func New(
 
 	server.HandlerFunc = func(c *ctx.RequestContext) {
 		handlerFunc(c, &server)
+	}
+
+	// Apply custom options
+	for _, opt := range opts {
+		opt(&server)
 	}
 
 	return &server

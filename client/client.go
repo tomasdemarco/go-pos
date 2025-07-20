@@ -49,27 +49,55 @@ type Client struct {
 
 type HandlerFunc func(*context.RequestContext, *Client)
 
+type ClientOption func(*Client)
+
+func WithName(name string) ClientOption {
+	return func(c *Client) {
+		c.Name = name
+	}
+}
+
+func WithTimeout(timeout time.Duration) ClientOption {
+	return func(c *Client) {
+		c.Timeout = timeout
+	}
+}
+
+func WithAutoReconnect(autoReconnect bool) ClientOption {
+	return func(c *Client) {
+		c.AutoReconnect = autoReconnect
+	}
+}
+
+func WithMatchFields(matchFields []int) ClientOption {
+	return func(c *Client) {
+		c.MatchFields = matchFields
+	}
+}
+
+func WithLogger(logger *logger.Logger) ClientOption {
+	return func(c *Client) {
+		c.Logger = logger
+	}
+}
+
 func New(
-	name string,
 	host string,
 	port int,
-	timeout int,
-	autoReconnect bool,
 	packager *packager.Packager,
-	matchFields *[]int,
-	logger *logger.Logger,
+	opts ...ClientOption,
 ) *Client {
 	client := Client{
-		Name:                name,
+		Name:                "client",
 		Network:             "tcp",
 		Host:                host,
 		Port:                port,
-		Timeout:             time.Duration(timeout) * time.Millisecond,
-		AutoReconnect:       autoReconnect,
+		Timeout:             30 * time.Second,
+		AutoReconnect:       true,
 		Packager:            packager,
 		MatchFields:         []int{0, 7, 11},
 		Stan:                utils.NewStan(1, 999999),
-		Logger:              logger,
+		Logger:              logger.New(logger.Info, "client"),
 		OngoingTransactions: NewOngoingTransactions(),
 		LengthPackFunc:      length.Pack,
 		LengthUnpackFunc:    length.Unpack,
@@ -82,8 +110,8 @@ func New(
 		maxMessageSize:      4096,
 	}
 
-	if matchFields != nil {
-		client.MatchFields = *matchFields
+	for _, opt := range opts {
+		opt(&client)
 	}
 
 	return &client
