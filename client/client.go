@@ -28,7 +28,7 @@ type Client struct {
 	AutoReconnect       bool
 	Conn                *net.TCPConn
 	Reader              *bufio.Reader
-	Writer              *bufio.Writer
+	Writer              *context.SafeWriter
 	RemoteAddr          string
 	OngoingTransactions *OngoingTransactions
 	Packager            *packager.Packager
@@ -134,7 +134,8 @@ func (c *Client) Connect() error {
 	serverContext := context.NewServerContext(c.Conn)
 
 	c.Logger.Info(serverContext, logger.Message, fmt.Sprintf("connection established to %s", tcpAddr.String()))
-
+	c.Reader = bufio.NewReader(c.Conn)
+	c.Writer = context.NewSafeWriter(c.Conn)
 	go func() {
 		c.Listen(serverContext)
 
@@ -288,11 +289,16 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 // Send message for the connection to the server
 func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
+
+	fmt.Println(msg.Bitmap.GetSliceString())
+	fmt.Println(msg.Bitmap.ToString())
 	messageResponseRaw, err := msg.Pack()
 	if err != nil {
 		return err
 	}
 
+	fmt.Println(msg.Bitmap.GetSliceString())
+	fmt.Println(msg.Bitmap.ToString())
 	headerRaw, headerLength, err := c.HeaderPackFunc(msg.Header)
 	trailerRaw, trailerLength, err := c.TrailerPackFunc(msg.Trailer)
 
@@ -337,11 +343,6 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {
 		c.Logger.Error(ctx, err)
-	} else {
-		err = c.Writer.Flush()
-		if err != nil {
-			c.Logger.Error(ctx, err)
-		}
 	}
 
 	for err != nil && time.Since(ctx.StarTime) < c.Timeout {
@@ -350,11 +351,6 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 		_, err = c.Writer.Write(buf.Bytes())
 		if err != nil {
 			c.Logger.Error(ctx, err)
-		} else {
-			err = c.Writer.Flush()
-			if err != nil {
-				c.Logger.Error(ctx, err)
-			}
 		}
 	}
 

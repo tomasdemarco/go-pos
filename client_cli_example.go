@@ -42,14 +42,14 @@ func main() {
 	port := 8015
 
 	cli := client.New(
-		"client-prueba",
 		host,
 		port,
-		20000,
-		true,
-		&pkg,
-		nil,
-		logger.New(logger.Info, "client-prueba"),
+		pkg,
+		client.WithName("client-prueba"),
+		client.WithTimeout(30*time.Second),
+		client.WithAutoReconnect(true),
+		client.WithMatchFields([]int{7, 11}),
+		client.WithLogger(logger.New(logger.Debug, "client-prueba")),
 	)
 
 	cli.LengthPackFunc = length.Pack
@@ -69,6 +69,8 @@ func main() {
 
 	ctx := context.NewRequestContext(nil, msg)
 
+	fmt.Println(msg.Bitmap.GetSliceString())
+	fmt.Println(msg.Bitmap.ToString())
 	err = cli.Send(ctx, msg)
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -101,7 +103,7 @@ func buildMessageByFile(c client.Client, file string) (*message.Message, error) 
 		return nil, err
 	}
 
-	var fields map[string]string
+	var fields map[int]string
 
 	err = json.Unmarshal(byteValue, &fields)
 	if err != nil {
@@ -111,23 +113,20 @@ func buildMessageByFile(c client.Client, file string) (*message.Message, error) 
 
 	msg := message.NewMessage(c.Packager)
 
-	//header := make(map[string]string)
-	//header["01"] = "60"
-	//header["02"] = "0001"
-	//header["03"] = "0000"
-	//msg.Header = header
-
 	now := time.Now()
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	msg.SetField("004", fmt.Sprintf("%012d", random.Intn(99999999-100)+100))
-	msg.SetField("007", now.Format("0102150405"))
-	msg.SetField("011", fmt.Sprintf("%06d", c.Stan.Next()))
-	msg.SetField("012", now.Format("150405"))
-	msg.SetField("013", now.Format("0102"))
+	msg.SetField(4, fmt.Sprintf("%012d", random.Intn(99999999-100)+100))
+	msg.SetField(7, now.Format("0102150405"))
+	msg.SetField(11, fmt.Sprintf("%06d", c.Stan.Next()))
+	msg.SetField(12, now.Format("150405"))
+	msg.SetField(13, now.Format("0102"))
 
+	fmt.Println(fields)
 	for k, v := range fields {
-		msg.SetField(fmt.Sprintf("%03s", k), v)
+		fmt.Println(msg.Fields)
+		fmt.Println("SET:", k)
+		msg.SetField(k, v)
 	}
 
 	jsonData, err := json.Marshal(msg.Fields)

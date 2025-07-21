@@ -18,7 +18,7 @@
 		"001": {
 			"description": "Secondary Bitmap",
 			"type": "BITMAP",
-			"length": 16,
+			"length": 8,
 			"pattern": "^[0-9a-fA-F]{16,32}$",
 			"encoding": "BINARY",
 			"prefix":  null,
@@ -406,28 +406,7 @@
 				"encoding": "BCD"
 			},
 			"padding": null,
-			"subFieldsData": {
-				"subfields": {
-					"01": {
-						"name": "Batch Number",
-						"type": "STRING",
-						"length": 3,
-						"pattern": "^{3}$",
-						"encoding": "NONE",
-						"prefix": null,
-						"padding": null
-					},
-					"02": {
-						"name": "Ticket Number",
-						"type": "STRING",
-						"length": 4,
-						"pattern": "^{4}$",
-						"encoding": "NONE",
-						"prefix": null,
-						"padding": null
-					}
-				}
-			}
+			"subFieldsData": null
 		},
 		"063": {
 			"description": "Reserved (Private)",
