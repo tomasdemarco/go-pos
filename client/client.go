@@ -289,16 +289,11 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 // Send message for the connection to the server
 func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
-
-	fmt.Println(msg.Bitmap.GetSliceString())
-	fmt.Println(msg.Bitmap.ToString())
 	messageResponseRaw, err := msg.Pack()
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(msg.Bitmap.GetSliceString())
-	fmt.Println(msg.Bitmap.ToString())
 	headerRaw, headerLength, err := c.HeaderPackFunc(msg.Header)
 	trailerRaw, trailerLength, err := c.TrailerPackFunc(msg.Trailer)
 
