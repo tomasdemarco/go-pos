@@ -4,7 +4,7 @@ go 1.23.10
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tomasdemarco/iso8583 v1.8.6
+	github.com/tomasdemarco/iso8583 v1.8.7
 )
 
 //replace github.com/tomasdemarco/iso8583 => "C:/Users/tdemarco/Desktop/Mensajeria ISO/iso8583"
