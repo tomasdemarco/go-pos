@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	ctx "github.com/tomasdemarco/go-pos/context"
-	"github.com/tomasdemarco/go-pos/header"
 	"github.com/tomasdemarco/go-pos/logger"
-	"github.com/tomasdemarco/go-pos/trailer"
 	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
@@ -19,20 +17,15 @@ import (
 )
 
 type Server struct {
-	Name                 string
-	Network              string
-	Port                 int
-	Packager             *packager.Packager
-	Stan                 *utils.Stan
-	Logger               *logger.Logger
-	HandlerFunc          func(c *ctx.RequestContext)
-	LengthPackFunc       length.PackFunc
-	LengthUnpackFunc     length.UnpackFunc
-	HeaderPackFunc       header.PackFunc
-	HeaderUnpackFunc     header.UnpackFunc
-	TrailerPackFunc      trailer.PackFunc
-	TrailerUnpackFunc    trailer.UnpackFunc
-	TrailerGetLengthFunc trailer.GetLengthFunc
+	Name             string
+	Network          string
+	Port             int
+	Packager         *packager.Packager
+	Stan             *utils.Stan
+	Logger           *logger.Logger
+	HandlerFunc      func(c *ctx.RequestContext)
+	LengthPackFunc   length.PackFunc
+	LengthUnpackFunc length.UnpackFunc
 
 	maxClients         int
 	sem                chan struct{}
@@ -91,24 +84,19 @@ func New(
 
 	// Default values
 	server := Server{
-		Name:                 "server",
-		Network:              "tcp",
-		Port:                 port,
-		Packager:             packager,
-		Stan:                 utils.NewStan(1, 999999),
-		Logger:               logger.New(logger.Info, "server"),
-		LengthPackFunc:       length.Pack,
-		LengthUnpackFunc:     length.Unpack,
-		HeaderPackFunc:       header.Pack,
-		HeaderUnpackFunc:     header.Unpack,
-		TrailerPackFunc:      trailer.Pack,
-		TrailerUnpackFunc:    trailer.Unpack,
-		TrailerGetLengthFunc: trailer.GetLength,
-		maxClients:           10, // Default max clients
-		sem:                  make(chan struct{}, 10),
-		ReadClientTimeout:    10 * time.Minute,
-		ReadMessageTimeout:   10 * time.Second,
-		MaxMessageSize:       4096,
+		Name:               "server",
+		Network:            "tcp",
+		Port:               port,
+		Packager:           packager,
+		Stan:               utils.NewStan(1, 999999),
+		Logger:             logger.New(logger.Info, "server"),
+		LengthPackFunc:     length.Pack,
+		LengthUnpackFunc:   length.Unpack,
+		maxClients:         10, // Default max clients
+		sem:                make(chan struct{}, 10),
+		ReadClientTimeout:  10 * time.Minute,
+		ReadMessageTimeout: 10 * time.Second,
+		MaxMessageSize:     4096,
 	}
 
 	server.HandlerFunc = func(c *ctx.RequestContext) {
@@ -216,32 +204,29 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 			return
 		}
 
-		msgReq := message.NewMessage(s.Packager)
-		c := ctx.NewRequestContext(clientCtx, msgReq)
+		msg := message.NewMessage(s.Packager)
+		c := ctx.NewRequestContext(clientCtx, msg)
 
 		s.Logger.Debug(c, fmt.Sprintf("received message length: %d", lengthVal))
 
-		msgReq.Length = lengthVal
-		headerVal, headerLength, err := s.HeaderUnpackFunc(clientCtx.Reader)
-		if err != nil {
-			if err != io.EOF {
-				s.Logger.Error(c, err)
-			}
-			break
-		}
+		msg.Length = lengthVal
 
-		msgReq.Header = headerVal
-
-		if msgReq.Header != nil {
-			if _, ok := msgReq.Header.([]byte); ok {
-				s.Logger.Debug(c, fmt.Sprintf("received message header: %X", msgReq.Header.([]byte)))
-			} else {
-				s.Logger.Debug(c, fmt.Sprintf("received message header: %v", msgReq.Header))
+		if s.Packager.Header != nil {
+			headerVal, headerLength, err := s.Packager.Header.Unpack(clientCtx.Reader)
+			if err != nil {
+				if err != io.EOF && !errors.Is(err, net.ErrClosed) {
+					s.Logger.Error(c, err)
+				}
+				break
 			}
+
+			lengthVal -= headerLength
+			msg.Header = headerVal
+			s.Logger.Debug(c, msg.Header.Log())
 		}
 
 		_ = clientCtx.Conn.SetReadDeadline(time.Now().Add(s.ReadMessageTimeout))
-		msgRaw := make([]byte, lengthVal-headerLength-s.TrailerGetLengthFunc())
+		msgRaw := make([]byte, lengthVal)
 		_, err = io.ReadFull(clientCtx.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
@@ -252,48 +237,37 @@ func (s *Server) handleClient(clientCtx *ctx.ClientContext) {
 
 		s.Logger.Debug(c, fmt.Sprintf("received a message: %X", msgRaw))
 
-		err = msgReq.Unpack(msgRaw)
+		err = msg.Unpack(msgRaw)
 		if err != nil {
 			s.Logger.Error(c, err)
 		} else {
 
 			s.Logger.Info(c, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
-			s.Logger.Info(c, logger.IsoMessage, msgReq.Log())
+			s.Logger.Info(c, logger.IsoMessage, msg.Log())
 
 			go s.HandlerFunc(c)
-		}
-
-		trailerVal, _, err := s.TrailerUnpackFunc(clientCtx.Reader)
-		if err != nil {
-			if err != io.EOF {
-				s.Logger.Error(c, err)
-			}
-			break
-		}
-
-		msgReq.Trailer = trailerVal
-
-		if msgReq.Trailer != nil {
-			if _, ok := msgReq.Trailer.([]byte); ok {
-				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %X", msgReq.Trailer.([]byte)))
-			} else {
-				s.Logger.Debug(c, fmt.Sprintf("received message trailer: %v", msgReq.Trailer))
-			}
 		}
 	}
 }
 
-// SendResponse message for the connection to the client
-func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) error {
+// Send message for the connection to the client
+func (s *Server) Send(ctx *ctx.RequestContext, msg *message.Message) error {
 	msgRaw, err := msg.Pack()
 	if err != nil {
 		return err
 	}
 
-	headerRaw, headerLength, err := s.HeaderPackFunc(msg.Header)
-	trailerRaw, trailerLength, err := s.TrailerPackFunc(msg.Trailer)
+	totalLength := len(msgRaw)
 
-	lengthPacked, err := s.LengthPackFunc(s.Packager.Prefix, len(msgRaw)+headerLength+trailerLength)
+	var headerRaw []byte
+	var headerLength int
+	if s.Packager.Header != nil && msg.Header != nil {
+		s.Logger.Debug(ctx, msg.Header.Log())
+		headerRaw, headerLength, err = s.Packager.Header.Pack(msg.Header)
+		totalLength += headerLength
+	}
+
+	lengthPacked, err := s.LengthPackFunc(s.Packager.Prefix, totalLength)
 	if err != nil {
 		return err
 	}
@@ -305,7 +279,6 @@ func (s *Server) SendResponse(ctx *ctx.RequestContext, msg *message.Message) err
 	buf.Write(lengthPacked)
 	buf.Write(headerRaw)
 	buf.Write(msgRaw)
-	buf.Write(trailerRaw)
 
 	_, err = ctx.ClientCtx.Writer.Write(buf.Bytes())
 	if err != nil {

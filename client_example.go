@@ -5,6 +5,7 @@ import (
 	"github.com/tomasdemarco/go-pos/client"
 	reqCtx "github.com/tomasdemarco/go-pos/context"
 	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/iso8583/header"
 	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
@@ -19,6 +20,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
+	pkg.Header = &HeaderGpPackager{}
 
 	//host := "127.0.0.1"
 	//port := 8015
@@ -38,8 +40,6 @@ func main() {
 
 	cli.LengthPackFunc = length.Pack
 	cli.LengthUnpackFunc = length.Unpack
-	cli.HeaderPackFunc = HeaderPackC
-	cli.HeaderUnpackFunc = HeaderUnpackC
 
 	err = cli.Connect()
 	if err != nil {
@@ -86,11 +86,7 @@ func assembleMessage(c client.Client) *message.Message {
 
 	msg := message.NewMessage(c.Packager)
 
-	//header := make(map[string]string)
-	//header["01"] = "60"
-	//header["02"] = "0001"
-	//header["03"] = "0000"
-	//msg.Header = header
+	msg.Header = assembleHeaderGp()
 
 	msg.SetField(0, "0200")
 	msg.SetField(2, "4761730000000144")
@@ -115,12 +111,32 @@ func assembleMessage(c client.Client) *message.Message {
 	//msg.SetField("059", "02100010010707")
 	msg.SetField(59, "021000100107070680008008097C1049AAK0010988020166YAG*GP Abarrotes Jes018167Avda Caseros, 286200416854110041694280009173Balvanera0011741")
 	msg.SetField(60, "GP")
-	//de62 := make(subfield.Subfields)
-	//de62["01"] = "001"
-	//de62["02"] = "0003"
-	msg.SetField(62, "0010003")
+
+	message.RegisterStructField[CustomerInfo](msg, 62)
+
+	originalInfo := CustomerInfo{Ticket: "0123", Lote: "001"}
+	msg.SetField(62, originalInfo)
 
 	return msg
+}
+
+// CustomerInfo Un struct personalizado que implementa CustomPacker
+type CustomerInfo struct {
+	Ticket string `json:"ticket"`
+	Lote   string `json:"lote"`
+}
+
+func (c *CustomerInfo) Pack() (string, error) {
+	return fmt.Sprintf("%s%s", c.Ticket, c.Lote), nil
+}
+
+func (c *CustomerInfo) Unpack(data string) error {
+	if len(data) > 4 {
+		return fmt.Errorf("formato inválido para CustomerInfo: se esperaban mas de 4 caracteres, se obtuvieron %d", len(data))
+	}
+	c.Ticket = data[:4]
+	c.Lote = data[4:]
+	return nil
 }
 
 //func assembleMessage(ctx *context.Context, c client.Client) *message.Message {
@@ -152,7 +168,28 @@ func assembleMessage(c client.Client) *message.Message {
 //	return msg
 //}
 
-func HeaderUnpackC(r io.Reader) (value interface{}, length int, err error) {
+type GpHeader struct {
+	MessageId     []byte
+	SourceId      []byte
+	DestinationId []byte
+}
+
+func (h *GpHeader) Get() any { return h }
+func (h *GpHeader) Set(hdr any) {
+	if val, ok := hdr.(*GpHeader); ok {
+		h.MessageId = val.MessageId
+		h.SourceId = val.SourceId
+		h.DestinationId = val.DestinationId
+	}
+}
+
+func (h *GpHeader) Log() string {
+	return fmt.Sprintf("MsgId: %X | SrcId: %X | DstId: %X", h.MessageId, h.SourceId, h.DestinationId)
+}
+
+type HeaderGpPackager struct{}
+
+func (h *HeaderGpPackager) Unpack(r io.Reader) (value header.Header, length int, err error) {
 
 	buf := make([]byte, 5)
 	_, err = r.Read(buf)
@@ -164,9 +201,38 @@ func HeaderUnpackC(r io.Reader) (value interface{}, length int, err error) {
 		return nil, 0, err
 	}
 
-	return fmt.Sprintf("%x", buf), 5, nil
+	return unpackHeaderGp(buf), 5, nil
 }
 
-func HeaderPackC(interface{}) ([]byte, int, error) {
-	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, 5, nil
+func (h *HeaderGpPackager) Pack(hdr header.Header) ([]byte, int, error) {
+	var b []byte
+	if hdr, ok := hdr.Get().(*GpHeader); ok {
+		b = append(b, hdr.MessageId...)
+		b = append(b, hdr.SourceId...)
+		b = append(b, hdr.DestinationId...)
+	}
+	return b, 5, nil
+}
+
+func assembleHeaderGp() *GpHeader {
+
+	hdr := GpHeader{}
+	hdr.MessageId = []byte{0x60}
+	hdr.SourceId = []byte{0x00, 0x01}
+	hdr.DestinationId = []byte{0x00, 0x00}
+
+	return &hdr
+}
+
+func unpackHeaderGp(b []byte) *GpHeader {
+
+	if len(b) == 5 {
+		h := GpHeader{}
+		h.MessageId = b[:1]
+		h.SourceId = b[1:3]
+		h.DestinationId = b[3:5]
+		return &h
+	}
+
+	return nil
 }

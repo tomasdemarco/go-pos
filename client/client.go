@@ -6,9 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tomasdemarco/go-pos/context"
-	"github.com/tomasdemarco/go-pos/header"
 	"github.com/tomasdemarco/go-pos/logger"
-	"github.com/tomasdemarco/go-pos/trailer"
+	"github.com/tomasdemarco/iso8583/header"
 	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
@@ -29,7 +28,6 @@ type Client struct {
 	Conn                *net.TCPConn
 	Reader              *bufio.Reader
 	Writer              *context.SafeWriter
-	RemoteAddr          string
 	OngoingTransactions *OngoingTransactions
 	Packager            *packager.Packager
 	MatchFields         []int
@@ -37,10 +35,7 @@ type Client struct {
 	Logger              *logger.Logger
 	LengthPackFunc      length.PackFunc
 	LengthUnpackFunc    length.UnpackFunc
-	HeaderPackFunc      header.PackFunc
-	HeaderUnpackFunc    header.UnpackFunc
-	TrailerPackFunc     trailer.PackFunc
-	TrailerUnpackFunc   trailer.UnpackFunc
+	Header              header.Header
 
 	readServerTimeout  time.Duration
 	readMessageTimeout time.Duration
@@ -101,10 +96,6 @@ func New(
 		OngoingTransactions: NewOngoingTransactions(),
 		LengthPackFunc:      length.Pack,
 		LengthUnpackFunc:    length.Unpack,
-		HeaderPackFunc:      header.Pack,
-		HeaderUnpackFunc:    header.Unpack,
-		TrailerPackFunc:     trailer.Pack,
-		TrailerUnpackFunc:   trailer.Unpack,
 		readServerTimeout:   5 * time.Minute,
 		readMessageTimeout:  5 * time.Second,
 		maxMessageSize:      4096,
@@ -156,13 +147,12 @@ func (c *Client) Connect() error {
 func (c *Client) Disconnect() error {
 
 	if c.Conn != nil {
-
 		err := c.Conn.Close()
 		if err != nil {
 			return err
 		}
 
-		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.RemoteAddr))
+		c.Logger.Info(nil, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()))
 	}
 
 	return nil
@@ -186,14 +176,14 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 			return
 		}
 
-		c.Logger.Info(ctx, logger.Message, fmt.Sprintf("disconnection to %s", c.RemoteAddr))
+		c.Logger.Info(ctx, logger.Message, fmt.Sprintf("disconnection to %s", c.Conn.RemoteAddr().String()))
 	}()
 
 	for {
 		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readServerTimeout))
-		lengthVal, err := length.Unpack(c.Reader, c.Packager.Prefix)
+		lengthVal, err := c.LengthUnpackFunc(c.Reader, c.Packager.Prefix)
 		if err != nil {
-			if err != io.EOF {
+			if err != io.EOF && !errors.Is(err, net.ErrClosed) {
 				c.Logger.Error(ctx, err)
 			}
 			break
@@ -210,28 +200,25 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 		c.Logger.Debug(ctx, fmt.Sprintf("received message length: %d", lengthVal))
 
-		msgRes := message.NewMessage(c.Packager)
-		msgRes.Length = lengthVal
-		headerVal, headerLength, err := c.HeaderUnpackFunc(c.Reader)
-		if err != nil {
-			if err != io.EOF {
-				c.Logger.Error(ctx, err)
-			}
-			break
-		}
+		msg := message.NewMessage(c.Packager)
+		msg.Length = lengthVal
 
-		msgRes.Header = headerVal
-
-		if msgRes.Header != nil {
-			if _, ok := msgRes.Header.([]byte); ok {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message header: %X", msgRes.Header.([]byte)))
-			} else {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message header: %v", msgRes.Header))
+		if c.Packager.Header != nil {
+			headerVal, headerLength, err := c.Packager.Header.Unpack(c.Reader)
+			if err != nil {
+				if err != io.EOF && !errors.Is(err, net.ErrClosed) {
+					c.Logger.Error(ctx, err)
+				}
+				break
 			}
+
+			lengthVal -= headerLength
+			msg.Header = headerVal
+			c.Logger.Debug(ctx, fmt.Sprintf("received message header: %s", msg.Header.Log()))
 		}
 
 		_ = c.Conn.SetReadDeadline(time.Now().Add(c.readMessageTimeout))
-		msgRaw := make([]byte, lengthVal-headerLength)
+		msgRaw := make([]byte, lengthVal)
 		_, err = io.ReadFull(c.Reader, msgRaw)
 		if err != nil {
 			if err != io.EOF {
@@ -240,48 +227,28 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 			break
 		}
 
-		trailerVal, trailerLength, err := c.TrailerUnpackFunc(c.Reader)
-		if err != nil {
-			if err != io.EOF {
-				c.Logger.Error(ctx, err)
-			}
-			break
-		}
-
-		msgRaw = msgRaw[:len(msgRaw)-trailerLength]
-
-		msgRes.Trailer = trailerVal
-
-		if msgRes.Trailer != nil {
-			if _, ok := msgRes.Trailer.([]byte); ok {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message trailer: %X", msgRes.Trailer.([]byte)))
-			} else {
-				c.Logger.Debug(ctx, fmt.Sprintf("received message trailer: %v", msgRes.Trailer))
-			}
-		}
-
 		c.Logger.Debug(ctx, fmt.Sprintf("received a message: %X", msgRaw))
 
-		err = msgRes.Unpack(msgRaw)
+		err = msg.Unpack(msgRaw)
 		if err != nil {
 			c.Logger.Error(ctx, err)
 		} else {
 			var messageId string
 			for _, v := range c.MatchFields {
-				fld, _ := msgRes.GetField(v)
+				fld, _ := msg.Field(v).String()
 				messageId += fld
 			}
 
 			if c.OngoingTransactions.List[messageId].Message != nil || !c.OngoingTransactions.IsChanClosed(messageId) {
 				c.Logger.Debug(c.OngoingTransactions.List[messageId].Ctx, fmt.Sprintf("received a message, id: %s", messageId))
 				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
-				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msgRes.Log())
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.Log())
 
-				c.OngoingTransactions.List[messageId].Message <- *msgRes
+				c.OngoingTransactions.List[messageId].Message <- *msg
 			} else {
 				c.Logger.Debug(ctx, fmt.Sprintf("received an unmatched message, id: %s", messageId))
 				c.Logger.Info(ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
-				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msgRes.Log())
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.Log())
 			}
 		}
 	}
@@ -289,26 +256,34 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 
 // Send message for the connection to the server
 func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
-	messageResponseRaw, err := msg.Pack()
+	msgRaw, err := msg.Pack()
 	if err != nil {
 		return err
 	}
 
-	headerRaw, headerLength, err := c.HeaderPackFunc(msg.Header)
-	trailerRaw, trailerLength, err := c.TrailerPackFunc(msg.Trailer)
+	totalLength := len(msgRaw)
 
-	lengthPacked, err := length.Pack(c.Packager.Prefix, len(messageResponseRaw)+headerLength+trailerLength)
+	var headerRaw []byte
+	var headerLength int
+	if c.Packager.Header != nil && msg.Header != nil {
+		c.Logger.Debug(ctx, fmt.Sprintf("send message header: %s", msg.Header.Log()))
+		headerRaw, headerLength, err = c.Packager.Header.Pack(msg.Header)
+		totalLength += headerLength
+	}
+
+	lengthPacked, err := c.LengthPackFunc(c.Packager.Prefix, totalLength)
 	if err != nil {
 		return err
 	}
 
-	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%X", messageResponseRaw))
+	c.Logger.Debug(ctx, fmt.Sprintf("send message length: %d", totalLength))
+	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%X", msgRaw))
 	c.Logger.Info(ctx, logger.IsoMessage, msg.Log())
 
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == 0 {
-			fld, err := ctx.Request.GetField(v)
+			fld, err := ctx.Request.Field(v).String()
 			if err != nil {
 				return err
 			}
@@ -319,7 +294,7 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 			}
 			messageId += mti
 		} else {
-			fld, err := ctx.Request.GetField(v)
+			fld, err := ctx.Request.Field(v).String()
 			if err != nil {
 				return err
 			}
@@ -332,8 +307,9 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 	buf := new(bytes.Buffer)
 	buf.Write(lengthPacked)
 	buf.Write(headerRaw)
-	buf.Write(messageResponseRaw)
-	buf.Write(trailerRaw)
+	buf.Write(msgRaw)
+
+	c.Logger.Debug(ctx, fmt.Sprintf("send a message: %X", buf.Bytes()))
 
 	_, err = c.Writer.Write(buf.Bytes())
 	if err != nil {
@@ -362,7 +338,7 @@ func (c *Client) Wait(reqCtx *context.RequestContext) (*message.Message, error) 
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == 0 {
-			fld, err := reqCtx.Request.GetField(v)
+			fld, err := reqCtx.Request.Field(v).String()
 			if err != nil {
 				return nil, err
 			}
@@ -373,7 +349,7 @@ func (c *Client) Wait(reqCtx *context.RequestContext) (*message.Message, error) 
 			}
 			messageId += mti
 		} else {
-			fld, err := reqCtx.Request.GetField(v)
+			fld, err := reqCtx.Request.Field(v).String()
 			if err != nil {
 				return nil, err
 			}

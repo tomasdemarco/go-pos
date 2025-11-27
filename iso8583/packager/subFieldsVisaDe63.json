@@ -1,56 +1,60 @@
 {
+  "description": "subFieldsVisaDe63",
+  "prefix":  null,
+  "fields": {
     "00": {
-        "name": "Bitmap",
-        "type": "STRING",
-        "length": 6,
-        "pattern": "^{6}$",
-        "encoding": "BCD",
-        "prefix": null,
-        "padding": null
+      "description": "Bitmap",
+      "type": "BITMAP",
+      "length": 3,
+      "pattern": "^{6}$",
+      "encoding": "BINARY",
+      "prefix": null,
+      "padding": null
     },
     "01": {
-        "name": "Network ID",
-        "type": "STRING",
-        "length": 4,
-        "pattern": "^{4}$",
-        "encoding": "BCD",
-        "prefix": null,
-        "padding": null
+      "description": "Network ID",
+      "type": "STRING",
+      "length": 4,
+      "pattern": "^{4}$",
+      "encoding": "BCD",
+      "prefix": null,
+      "padding": null
     },
     "02": {
-        "name": "Time (Preauth Time Limit)",
-        "type": "STRING",
-        "length": 4,
-        "pattern": "^{4}$",
-        "encoding": "BCD",
-        "prefix": null,
-        "padding": null
+      "description": "Time (Preauth Time Limit)",
+      "type": "STRING",
+      "length": 4,
+      "pattern": "^{4}$",
+      "encoding": "BCD",
+      "prefix": null,
+      "padding": null
     },
     "03": {
-        "name": "Message Reason Code",
-        "type": "STRING",
-        "length": 4,
-        "pattern": "^{4}$",
-        "encoding": "BCD",
-        "prefix": null,
-        "padding": null
+      "description": "Message Reason Code",
+      "type": "STRING",
+      "length": 4,
+      "pattern": "^{4}$",
+      "encoding": "BCD",
+      "prefix": null,
+      "padding": null
     },
     "04": {
-        "name": "STIP/Switch Reason Code",
-        "type": "STRING",
-        "length": 4,
-        "pattern": "^{2}$",
-        "encoding": "BCD",
-        "prefix": null,
-        "padding": null
+      "description": "STIP/Switch Reason Code",
+      "type": "STRING",
+      "length": 4,
+      "pattern": "^{2}$",
+      "encoding": "BCD",
+      "prefix": null,
+      "padding": null
     },
     "19": {
-        "name": "Fee Program indicator",
-        "type": "STRING",
-        "length": 6,
-        "pattern": "^{6}$",
-        "encoding": "EBCDIC",
-        "prefix": null,
-        "padding": null
+      "description": "Fee Program indicator",
+      "type": "STRING",
+      "length": 6,
+      "pattern": "^{6}$",
+      "encoding": "EBCDIC",
+      "prefix": null,
+      "padding": null
     }
+  }
 }

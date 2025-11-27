@@ -8,7 +8,6 @@ import (
 	"github.com/tomasdemarco/iso8583/length"
 	"github.com/tomasdemarco/iso8583/message"
 	"github.com/tomasdemarco/iso8583/packager"
-	"io"
 	"log"
 	"math/rand"
 	"time"
@@ -19,6 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error load packager - %s", err.Error())
 	}
+	pkg.Header = &VisaHeaderPackager{}
 
 	port := 8015
 
@@ -31,8 +31,6 @@ func main() {
 		server.WithMaxClients(10),
 	)
 
-	srv.HeaderPackFunc = HeaderPack
-	srv.HeaderUnpackFunc = HeaderUnpack
 	srv.LengthPackFunc = length.Pack
 	srv.LengthUnpackFunc = length.Unpack
 
@@ -63,15 +61,16 @@ func main() {
 // HandleRequest Handle client request
 func HandleRequest(c *ctx.RequestContext, s *server.Server) {
 	var msgRes *message.Message
+	msgRes.Header = &GpHeader{}
 
-	fld, err := c.Request.GetField(0)
+	fld, err := c.Request.Field(0).String()
 	if err == nil && fld == "1804" {
 		msgRes = PrepareEchoResponse(c.Request)
 	} else {
 		msgRes = PrepareResponse(c.Request)
 	}
 
-	err = s.SendResponse(c, msgRes)
+	err = s.Send(c, msgRes)
 	if err != nil {
 		s.Logger.Error(c, fmt.Errorf("error trying to send response message to the client: %w", err))
 	}
@@ -80,15 +79,14 @@ func HandleRequest(c *ctx.RequestContext, s *server.Server) {
 func PrepareResponse(messageRequest *message.Message) *message.Message {
 	messageResponse := message.NewMessage(messageRequest.Packager)
 
-	fld, err := messageRequest.GetField(0)
+	fld, err := messageRequest.Field(0).String()
 	if err == nil {
 		messageResponse.SetField(0, GetMtiResponse(fld))
 	}
 
 	for _, value := range messageRequest.Bitmap.GetSliceString() {
 		if value != 0 && value != 1 {
-
-			fld, err := messageRequest.GetField(value)
+			fld, err = messageRequest.Field(value).String()
 			if err == nil {
 				messageResponse.SetField(value, fld)
 			}
@@ -112,23 +110,23 @@ func PrepareEchoResponse(message800 *message.Message) *message.Message {
 	message0810 := message.NewMessage(message800.Packager)
 
 	message0810.SetField(0, "1814")
-	fld, err := message800.GetField(3)
+	fld, err := message800.Field(3).String()
 	if err == nil {
 		message0810.SetField(3, fld)
 	}
-	fld, err = message800.GetField(7)
+	fld, err = message800.Field(7).String()
 	if err == nil {
 		message0810.SetField(7, fld)
 	}
-	fld, err = message800.GetField(11)
+	fld, err = message800.Field(11).String()
 	if err == nil {
 		message0810.SetField(11, fld)
 	}
-	fld, err = message800.GetField(12)
+	fld, err = message800.Field(12).String()
 	if err == nil {
 		message0810.SetField(12, fld)
 	}
-	fld, err = message800.GetField(24)
+	fld, err = message800.Field(24).String()
 	if err == nil {
 		message0810.SetField(24, fld)
 	}
@@ -160,25 +158,4 @@ func GetMtiResponse(mti string) string {
 	}
 
 	return responseMTI
-}
-
-func HeaderUnpack(r io.Reader) (value interface{}, length int, err error) {
-
-	buf := make([]byte, 5)
-	_, err = r.Read(buf)
-	if err != nil {
-		if err != io.EOF {
-			err = fmt.Errorf("reading header: %w", err)
-		}
-
-		return nil, 0, err
-	}
-
-	//	h.Value = fmt.Sprintf("%x", buf)
-
-	return fmt.Sprintf("%x", buf), 5, nil
-}
-
-func HeaderPack(interface{}) ([]byte, int, error) {
-	return []byte{0x60, 0x00, 0x00, 0x00, 0x00}, 5, nil
 }
