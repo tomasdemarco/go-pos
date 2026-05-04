@@ -3,28 +3,24 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/tomasdemarco/go-pos/client"
-	reqCtx "github.com/tomasdemarco/go-pos/context"
-	"github.com/tomasdemarco/go-pos/logger"
-	"github.com/tomasdemarco/iso8583/header"
-	"github.com/tomasdemarco/iso8583/message"
-	"github.com/tomasdemarco/iso8583/packager"
-	"github.com/tomasdemarco/iso8583/prefix"
 	"io"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/tomasdemarco/go-pos/client"
+	reqCtx "github.com/tomasdemarco/go-pos/context"
+	"github.com/tomasdemarco/go-pos/iso8583/packager"
+	"github.com/tomasdemarco/go-pos/logger"
+	"github.com/tomasdemarco/iso8583/message"
+	"github.com/tomasdemarco/iso8583/prefix"
 )
 
-func main3() {
-	pkg, err := packager.LoadFromJson("./iso8583/packager", "iso87BVisaBase1Packager.json")
-	if err != nil {
-		log.Fatalf("error load packager - %s", err.Error())
-	}
-	pkg.Header = &VisaHeaderPackager{}
+func main() {
+	pkg := packager.CreateVisaPackager()
 
 	host := "127.0.0.1"
-	port := 8045
+	port := 8015
 	//host := "10.72.0.22"
 	//port := 8045
 
@@ -42,13 +38,13 @@ func main3() {
 	cli.LengthPackFunc = LengthVisaPack
 	cli.LengthUnpackFunc = LengthVisaUnpack
 
-	err = cli.Connect()
+	err := cli.Connect()
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1; i++ {
 		wg.Add(1)
 
 		msg := assembleVisaMessage(*cli)
@@ -86,8 +82,8 @@ func main3() {
 func assembleVisaMessage(c client.Client) *message.Message {
 
 	msg := message.NewMessage(c.Packager)
-	msg.Header = &VisaHeader{}
-	msg.Header.Set(assembleHeader())
+
+	msg.Header = assembleHeader()
 
 	msg.SetField(0, "0100")
 	msg.SetField(2, "4761730000000144")
@@ -109,38 +105,44 @@ func assembleVisaMessage(c client.Client) *message.Message {
 	msg.SetField(43, "GLOBAL PROCESSING        CABA         AR")
 	msg.SetField(60, "000000000740")
 
-	pkg62, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe62.json")
+	//pkg62, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe62.json")
+	//if err != nil {
+	//	log.Fatalf("error load packager - %s", err.Error())
+	//}
+	//message.RegisterStructField[message.BitmapCustomField](msg, 62)
+	//
+	//de62 := message.BitmapCustomField{}
+	//de62.SubPackager = pkg62
+	//de62.SetValue(4, "E")
+	//msg.SetField(62, de62)
+	//
+	//pkg63, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe63.json")
+	//if err != nil {
+	//	log.Fatalf("error load packager - %s", err.Error())
+	//}
+	//message.RegisterStructField[message.BitmapCustomField](msg, 63)
+	//
+	//de63 := message.BitmapCustomField{}
+	//de63.SubPackager = pkg63
+	//de63.SetValue(1, "0000")
+	//msg.SetField(63, de63)
+	//
+	//pkg126, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe126.json")
+	//if err != nil {
+	//	log.Fatalf("error load packager - %s", err.Error())
+	//}
+	//message.RegisterStructField[message.BitmapCustomField](msg, 126)
+
+	de126 := packager.NewDE126()
+	err := de126.SetFieldString(10, "11 078")
 	if err != nil {
-		log.Fatalf("error load packager - %s", err.Error())
+		fmt.Println(err)
 	}
-	message.RegisterStructField[message.BitmapCustomField](msg, 62)
-
-	de62 := message.BitmapCustomField{}
-	de62.SubPackager = pkg62
-	de62.SetValue(4, "E")
-	msg.SetField(62, de62)
-
-	pkg63, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe63.json")
+	//de126Pack, _ := de126.Pack()
+	err = msg.SetField(126, de126)
 	if err != nil {
-		log.Fatalf("error load packager - %s", err.Error())
+		fmt.Println(err)
 	}
-	message.RegisterStructField[message.BitmapCustomField](msg, 63)
-
-	de63 := message.BitmapCustomField{}
-	de63.SubPackager = pkg63
-	de63.SetValue(1, "0000")
-	msg.SetField(63, de63)
-
-	pkg126, err := packager.LoadFromJson("./iso8583/packager", "subFieldsVisaDe126.json")
-	if err != nil {
-		log.Fatalf("error load packager - %s", err.Error())
-	}
-	message.RegisterStructField[message.BitmapCustomField](msg, 126)
-
-	de126 := message.BitmapCustomField{}
-	de126.SubPackager = pkg126
-	de126.SetValue(10, "11 078")
-	msg.SetField(126, de126)
 
 	return msg
 }
@@ -174,50 +176,6 @@ func assembleVisaMessage(c client.Client) *message.Message {
 //	return msg
 //}
 
-type VisaHeader struct {
-	H1  []byte
-	H2  []byte
-	H3  []byte
-	H4  []byte
-	H5  []byte
-	H6  []byte
-	H7  []byte
-	H8  []byte
-	H9  []byte
-	H10 []byte
-	H11 []byte
-	H12 []byte
-	H13 []byte
-	H14 []byte
-}
-
-func (h *VisaHeader) Get() any { return h }
-func (h *VisaHeader) Set(header any) {
-	if headerVal, ok := header.(*VisaHeader); ok {
-		h.H1 = headerVal.H1
-		h.H2 = headerVal.H2
-		h.H3 = headerVal.H3
-		h.H4 = headerVal.H4
-		h.H5 = headerVal.H5
-		h.H6 = headerVal.H6
-		h.H7 = headerVal.H7
-		h.H8 = headerVal.H8
-		h.H9 = headerVal.H9
-		h.H10 = headerVal.H10
-		h.H11 = headerVal.H11
-		h.H12 = headerVal.H12
-	}
-}
-
-func (h *VisaHeader) Log() string {
-	val := fmt.Sprintf("H1: %X | H2: %X | H3: %X | H4: %X | H5: %X | H6: %X | H7: %X | H8: %X | H9: %X | H10: %X | H11: %X | H12: %X", h.H1, h.H2, h.H3, h.H4, h.H5, h.H6, h.H7, h.H8, h.H9, h.H10, h.H11, h.H12)
-
-	if h.H13 != nil && h.H14 != nil {
-		val += fmt.Sprintf(" | H13: %X | H14: %X", h.H13, h.H14)
-	}
-	return val
-}
-
 func LengthVisaPack(prefixer prefix.Prefixer, lenMessage int) ([]byte, error) {
 	b, err := prefixer.EncodeLength(lenMessage)
 	if err != nil {
@@ -247,65 +205,9 @@ func LengthVisaUnpack(r *bufio.Reader, prefixer prefix.Prefixer) (int, error) {
 	return result, err
 }
 
-type VisaHeaderPackager struct{}
+func assembleHeader() *packager.VisaHeader {
 
-func (h *VisaHeaderPackager) Unpack(r io.Reader) (val header.Header, length int, err error) {
-
-	headerLen := 22
-	buf := make([]byte, headerLen)
-	_, err = io.ReadFull(r, buf)
-	if err != nil {
-		if err != io.EOF {
-			err = fmt.Errorf("reading header: %w", err)
-		}
-
-		return nil, 0, err
-	}
-
-	hdr := unpackHeader(buf)
-	h1 := int(hdr.H1[0])
-	if h1 >= 26 {
-		rejectBuf := make([]byte, h1-headerLen)
-		_, err = io.ReadFull(r, rejectBuf)
-		if err != nil {
-			if err != io.EOF {
-				err = fmt.Errorf("reading header: %w", err)
-			}
-			return nil, 0, err
-		}
-
-		headerLen = h1
-
-		hdr.H13 = rejectBuf[:2]
-		hdr.H14 = rejectBuf[2:4]
-	}
-
-	return hdr, headerLen, nil
-}
-
-func (h *VisaHeaderPackager) Pack(val header.Header) ([]byte, int, error) {
-	var b []byte
-	if hdr, ok := val.Get().(*VisaHeader); ok {
-		b = append(b, hdr.H1...)
-		b = append(b, hdr.H2...)
-		b = append(b, hdr.H3...)
-		b = append(b, hdr.H4...)
-		b = append(b, hdr.H5...)
-		b = append(b, hdr.H6...)
-		b = append(b, hdr.H7...)
-		b = append(b, hdr.H8...)
-		b = append(b, hdr.H9...)
-		b = append(b, hdr.H10...)
-		b = append(b, hdr.H11...)
-		b = append(b, hdr.H12...)
-	}
-
-	return b, 22, nil
-}
-
-func assembleHeader() *VisaHeader {
-
-	hdr := VisaHeader{}
+	hdr := packager.VisaHeader{}
 	hdr.H1 = []byte{0x16}
 	hdr.H2 = []byte{0x01}
 	hdr.H3 = []byte{0x02}
@@ -320,26 +222,4 @@ func assembleHeader() *VisaHeader {
 	hdr.H12 = []byte{0x00}
 
 	return &hdr
-}
-
-func unpackHeader(b []byte) *VisaHeader {
-
-	if len(b) >= 22 {
-		visaHeader := VisaHeader{}
-		visaHeader.H1 = b[:1]
-		visaHeader.H2 = b[1:2]
-		visaHeader.H3 = b[2:3]
-		visaHeader.H4 = b[3:5]
-		visaHeader.H5 = b[5:8]
-		visaHeader.H6 = b[8:11]
-		visaHeader.H7 = b[11:12]
-		visaHeader.H8 = b[12:14]
-		visaHeader.H9 = b[14:17]
-		visaHeader.H10 = b[17:18]
-		visaHeader.H11 = b[18:21]
-		visaHeader.H12 = b[21:22]
-		return &visaHeader
-	}
-
-	return nil
 }

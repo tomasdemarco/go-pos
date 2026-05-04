@@ -1,4 +1,4 @@
-package main
+package packager
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 type BCD struct {
 	length   int
 	padRight bool
+	odd      bool
 }
 
 // NewBcdEncoder creates a new BCD encoder.
@@ -23,6 +24,8 @@ func NewBcdEncoder(padRight bool) encoding.Encoder {
 // Encode converts a decimal string to a BCD byte slice.
 // If `padLeft` is true and the source string has an odd length, it will be left-padded with '0'.
 func (e *BCD) Encode(src string) ([]byte, error) {
+	e.length = len(src)
+
 	start := 0
 	d := make([]byte, (len(src)+1)/2)
 
@@ -74,10 +77,33 @@ func (e *BCD) Decode(src []byte) (string, error) {
 		}
 		d.WriteRune(char)
 	}
-	return d.String(), nil
+
+	str := d.String()
+	if e.odd {
+		if e.padRight {
+			str = str[:len(str)-1]
+		} else {
+			str = str[1:]
+		}
+	}
+
+	return str, nil
 }
 
 // SetLength sets the length for the BCD encoder.
 func (e *BCD) SetLength(length int) {
-	e.length = length
+	if length%2 != 0 {
+		e.odd = true
+		length++
+	}
+
+	e.length = length / 2
+}
+
+func (e *BCD) GetLength() int {
+	return e.length
+}
+
+func (e *BCD) GetType() encoding.Encoding {
+	return encoding.Bcd
 }

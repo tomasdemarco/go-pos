@@ -235,20 +235,20 @@ func (c *Client) Listen(ctx *context.ServerContext) {
 		} else {
 			var messageId string
 			for _, v := range c.MatchFields {
-				fld, _ := msg.Field(v).String()
+				fld, _ := msg.GetFieldString(v)
 				messageId += fld
 			}
 
 			if c.OngoingTransactions.List[messageId].Message != nil || !c.OngoingTransactions.IsChanClosed(messageId) {
 				c.Logger.Debug(c.OngoingTransactions.List[messageId].Ctx, fmt.Sprintf("received a message, id: %s", messageId))
 				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
-				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.Log())
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.LogMsg())
 
 				c.OngoingTransactions.List[messageId].Message <- *msg
 			} else {
 				c.Logger.Debug(ctx, fmt.Sprintf("received an unmatched message, id: %s", messageId))
 				c.Logger.Info(ctx, logger.IsoUnpack, fmt.Sprintf("%X", msgRaw))
-				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.Log())
+				c.Logger.Info(c.OngoingTransactions.List[messageId].Ctx, logger.IsoMessage, msg.LogMsg())
 			}
 		}
 	}
@@ -278,12 +278,12 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 
 	c.Logger.Debug(ctx, fmt.Sprintf("send message length: %d", totalLength))
 	c.Logger.Info(ctx, logger.IsoPack, fmt.Sprintf("%X", msgRaw))
-	c.Logger.Info(ctx, logger.IsoMessage, msg.Log())
+	c.Logger.Info(ctx, logger.IsoMessage, msg.LogMsg())
 
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == 0 {
-			fld, err := ctx.Request.Field(v).String()
+			fld, err := ctx.Request.GetFieldString(v)
 			if err != nil {
 				return err
 			}
@@ -294,7 +294,7 @@ func (c *Client) Send(ctx *context.RequestContext, msg *message.Message) error {
 			}
 			messageId += mti
 		} else {
-			fld, err := ctx.Request.Field(v).String()
+			fld, err := ctx.Request.GetFieldString(v)
 			if err != nil {
 				return err
 			}
@@ -338,7 +338,7 @@ func (c *Client) Wait(reqCtx *context.RequestContext) (*message.Message, error) 
 	var messageId string
 	for _, v := range c.MatchFields {
 		if v == 0 {
-			fld, err := reqCtx.Request.Field(v).String()
+			fld, err := reqCtx.Request.GetFieldString(v)
 			if err != nil {
 				return nil, err
 			}
@@ -349,7 +349,7 @@ func (c *Client) Wait(reqCtx *context.RequestContext) (*message.Message, error) 
 			}
 			messageId += mti
 		} else {
-			fld, err := reqCtx.Request.Field(v).String()
+			fld, err := reqCtx.Request.GetFieldString(v)
 			if err != nil {
 				return nil, err
 			}
